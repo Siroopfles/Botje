@@ -1,12 +1,9 @@
 import mongoose from 'mongoose';
-import { Notification, NotificationPreferences } from 'shared';
+import { Notification } from 'shared';
 import {
     NotificationDocument,
     NotificationModel,
-    NotificationRepository,
-    NotificationPreferencesDocument,
-    NotificationPreferencesModel,
-    NotificationPreferencesRepository
+    NotificationRepository
 } from '../schemas/notification.js';
 
 export class MongoNotificationRepository implements NotificationRepository {
@@ -28,25 +25,27 @@ export class MongoNotificationRepository implements NotificationRepository {
     }
 
     async findByUserId(userId: string, serverId: string): Promise<NotificationDocument[]> {
-        return NotificationModel.find({ userId, serverId })
-            .sort({ scheduledFor: -1 });
+        return NotificationModel.find({
+            userId,
+            serverId,
+            read: false,
+            sentAt: { $exists: false }
+        }).sort({ scheduledFor: 1 });
     }
 
     async findUnread(userId: string, serverId: string): Promise<NotificationDocument[]> {
-        return NotificationModel.find({ 
-            userId, 
+        return NotificationModel.find({
+            userId,
             serverId,
-            read: false 
+            read: false,
+            sentAt: { $exists: true }
         }).sort({ scheduledFor: 1 });
     }
 
     async findScheduled(from: Date, to: Date): Promise<NotificationDocument[]> {
         return NotificationModel.find({
-            scheduledFor: {
-                $gte: from,
-                $lte: to
-            },
-            sentAt: null
+            scheduledFor: { $gte: from, $lte: to },
+            sentAt: { $exists: false }
         }).sort({ scheduledFor: 1 });
     }
 
@@ -54,26 +53,22 @@ export class MongoNotificationRepository implements NotificationRepository {
         if (!this.isValidObjectId(id)) {
             return null;
         }
-        const notification = await NotificationModel.findById(id);
-        if (!notification) {
-            return null;
-        }
-        notification.markAsRead();
-        await notification.save();
-        return notification;
+        return NotificationModel.findByIdAndUpdate(
+            id,
+            { read: true },
+            { new: true }
+        );
     }
 
     async markAsSent(id: string): Promise<NotificationDocument | null> {
         if (!this.isValidObjectId(id)) {
             return null;
         }
-        const notification = await NotificationModel.findById(id);
-        if (!notification) {
-            return null;
-        }
-        notification.markAsSent();
-        await notification.save();
-        return notification;
+        return NotificationModel.findByIdAndUpdate(
+            id,
+            { sentAt: new Date() },
+            { new: true }
+        );
     }
 
     async delete(id: string): Promise<boolean> {
@@ -83,42 +78,60 @@ export class MongoNotificationRepository implements NotificationRepository {
         const result = await NotificationModel.findByIdAndDelete(id);
         return result !== null;
     }
-}
 
-export class MongoNotificationPreferencesRepository implements NotificationPreferencesRepository {
-    async create(preferences: Omit<NotificationPreferences, 'id' | 'createdAt' | 'updatedAt'>): Promise<NotificationPreferencesDocument> {
-        const newPreferences = new NotificationPreferencesModel(preferences);
-        await newPreferences.save();
-        return newPreferences;
+    /**
+     * Clean up old notifications
+     * @param olderThan Date before which to clean up notifications
+     * @param onlyRead Whether to only clean up read notifications
+     */
+    async cleanup(olderThan: Date, onlyRead: boolean = true): Promise<number> {
+        const query: any = {
+            createdAt: { $lt: olderThan },
+            sentAt: { $exists: true }
+        };
+
+        if (onlyRead) {
+            query.read = true;
+        }
+
+        const result = await NotificationModel.deleteMany(query);
+        return result.deletedCount;
     }
 
-    async findByUserId(userId: string, serverId: string): Promise<NotificationPreferencesDocument | null> {
-        return NotificationPreferencesModel.findOne({ userId, serverId });
+    /**
+     * Count recent notifications for rate limiting
+     */
+    async countRecent(userId: string, serverId: string, since: Date): Promise<number> {
+        return NotificationModel.countDocuments({
+            userId,
+            serverId,
+            sentAt: { $gte: since }
+        });
     }
 
-    async findByServerId(serverId: string): Promise<NotificationPreferencesDocument[]> {
-        return NotificationPreferencesModel.find({ serverId });
+    /**
+     * Count server-wide recent notifications for rate limiting
+     */
+    async countServerRecent(serverId: string, since: Date): Promise<number> {
+        return NotificationModel.countDocuments({
+            serverId,
+            sentAt: { $gte: since }
+        });
     }
 
-    async update(userId: string, serverId: string, preferences: Partial<NotificationPreferences>): Promise<NotificationPreferencesDocument | null> {
-        return NotificationPreferencesModel.findOneAndUpdate(
-            { userId, serverId },
-            preferences,
-            { new: true }
+    /**
+     * Archive notifications for completed tasks
+     */
+    async archiveForTask(taskId: string): Promise<number> {
+        const result = await NotificationModel.updateMany(
+            { taskId },
+            { read: true }
         );
-    }
-
-    async delete(userId: string, serverId: string): Promise<boolean> {
-        const result = await NotificationPreferencesModel.findOneAndDelete({ userId, serverId });
-        return result !== null;
+        return result.modifiedCount;
     }
 }
 
-// Factory functions to create repository instances
+// Factory function to create repository instance
 export function createNotificationRepository(): NotificationRepository {
     return new MongoNotificationRepository();
-}
-
-export function createNotificationPreferencesRepository(): NotificationPreferencesRepository {
-    return new MongoNotificationPreferencesRepository();
 }

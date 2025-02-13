@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { ServerSettings } from 'shared';
+import { ServerSettings, ServerNotificationSettings } from 'shared';
 import {
     ServerSettingsDocument,
     ServerSettingsModel,
@@ -32,6 +32,17 @@ export class MongoServerSettingsRepository implements ServerSettingsRepository {
     async delete(serverId: string): Promise<boolean> {
         const result = await ServerSettingsModel.findOneAndDelete({ serverId });
         return result !== null;
+    }
+
+    async getNotificationSettings(serverId: string): Promise<ServerNotificationSettings> {
+        const settings = await this.findByServerId(serverId);
+        
+        // Return settings with defaults
+        return {
+            maxDailyServerNotifications: settings?.maxDailyServerNotifications ?? 0,
+            notificationRetentionDays: settings?.notificationRetentionDays ?? 30,
+            cleanupUnreadAfterDays: settings?.cleanupUnreadAfterDays ?? 90
+        };
     }
 }
 

@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import type { Command } from '../../types/command.js';
-import { TaskStatus, RecurrenceType } from 'shared';
-import { createTaskRepository, connect } from 'database';
+import { TaskStatus, RecurrenceType, NotificationService, NotificationScheduler } from 'shared';
+import { createTaskRepository, createNotificationPreferencesRepository, createNotificationRepository, connect } from 'database';
 
 function isValidDate(dateString: string): boolean {
     const date = new Date(dateString);
@@ -31,6 +31,34 @@ function formatTaskList(task: any, index: number): string {
             `   Repeats: Every ${task.recurrence.interval} ${task.recurrence.type.toLowerCase()}(s)` : null,
         ''
     ].filter(Boolean).join('\n');
+}
+
+async function scheduleTaskNotifications(task: any, serverId: string) {
+    const notificationRepo = createNotificationRepository();
+    const preferencesRepo = createNotificationPreferencesRepository();
+
+    if (task.assigneeId) {
+        let preferences = await preferencesRepo.findByUserId(task.assigneeId, serverId);
+        if (!preferences) {
+            // Create default preferences if none exist
+            preferences = await preferencesRepo.create(
+                NotificationService.createDefaultPreferences(task.assigneeId, serverId)
+            );
+        }
+
+        // Schedule notifications for the task
+        const notifications = NotificationScheduler.scheduleNotifications(task, preferences);
+        for (const scheduled of notifications) {
+            await notificationRepo.create({
+                ...scheduled.notification,
+                scheduledFor: scheduled.notification.scheduledFor
+            });
+        }
+
+        return notifications.length;
+    }
+
+    return 0;
 }
 
 export const task: Command = {
@@ -232,31 +260,21 @@ export const task: Command = {
                         recurrence
                     });
 
-                    await interaction.editReply({
-                        content: `✅ Task created successfully:\n${formatTaskSummary(task)}`
-                    });
-                    break;
-                }
-
-                case 'list': {
-                    const status = interaction.options.getString('status') as TaskStatus | null;
-                    
-                    const tasks = status 
-                        ? await taskRepo.findByStatusAndServer(interaction.guildId!, status)
-                        : await taskRepo.findByServerId(interaction.guildId!);
-
-                    if (tasks.length === 0) {
-                        await interaction.editReply('📋 No tasks found.');
-                        return;
-                    }
+                    // Schedule notifications if task has assignee
+                    const notificationCount = await scheduleTaskNotifications(task, interaction.guildId!);
 
                     const response = [
-                        `📋 Tasks${status ? ` (${status})` : ''}:`,
-                        '',
-                        ...tasks.map((task, index) => formatTaskList(task, index))
-                    ].join('\n');
+                        `✅ Task created successfully:`,
+                        formatTaskSummary(task)
+                    ];
 
-                    await interaction.editReply(response);
+                    if (notificationCount > 0) {
+                        response.push('', `📬 Scheduled ${notificationCount} notification(s) for this task.`);
+                    }
+
+                    await interaction.editReply({
+                        content: response.join('\n')
+                    });
                     break;
                 }
 
@@ -305,9 +323,46 @@ export const task: Command = {
                         return;
                     }
 
+                    // Schedule new notifications if assignee changed
+                    let notificationCount = 0;
+                    if (assignTo && assignTo.id !== task.assigneeId) {
+                        notificationCount = await scheduleTaskNotifications(updatedTask, interaction.guildId!);
+                    }
+
+                    const response = [
+                        `✅ Task updated successfully:`,
+                        formatTaskSummary(updatedTask)
+                    ];
+
+                    if (notificationCount > 0) {
+                        response.push('', `📬 Scheduled ${notificationCount} notification(s) for this task.`);
+                    }
+
                     await interaction.editReply({
-                        content: `✅ Task updated successfully:\n${formatTaskSummary(updatedTask)}`
+                        content: response.join('\n')
                     });
+                    break;
+                }
+
+                case 'list': {
+                    const status = interaction.options.getString('status') as TaskStatus | null;
+                    
+                    const tasks = status 
+                        ? await taskRepo.findByStatusAndServer(interaction.guildId!, status)
+                        : await taskRepo.findByServerId(interaction.guildId!);
+
+                    if (tasks.length === 0) {
+                        await interaction.editReply('📋 No tasks found.');
+                        return;
+                    }
+
+                    const response = [
+                        `📋 Tasks${status ? ` (${status})` : ''}:`,
+                        '',
+                        ...tasks.map((task, index) => formatTaskList(task, index))
+                    ].join('\n');
+
+                    await interaction.editReply(response);
                     break;
                 }
 

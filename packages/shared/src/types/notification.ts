@@ -13,6 +13,8 @@ export interface NotificationPreferences {
     notifyOnCompletion: boolean;
     notifyOnDue: boolean;
     notifyOnOverdue: boolean;
+    // Rate limiting
+    maxDailyNotifications?: number; // Max notifications per day (0 = unlimited)
     createdAt: Date;
     updatedAt: Date;
 }
@@ -48,4 +50,10 @@ export interface NotificationContent {
         inline?: boolean;
     }[];
     color?: number; // Discord embed color
+}
+
+export interface ServerNotificationSettings {
+    maxDailyServerNotifications?: number; // Max notifications per server per day (0 = unlimited)
+    notificationRetentionDays?: number; // Days to keep notifications before cleanup
+    cleanupUnreadAfterDays?: number; // Days to keep unread notifications
 }

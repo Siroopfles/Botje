@@ -177,6 +177,8 @@ notificationPreferencesMongooseSchema.index({ serverId: 1 }); // Add index for s
 notificationMongooseSchema.index({ scheduledFor: 1 });
 notificationMongooseSchema.index({ userId: 1, serverId: 1 });
 notificationMongooseSchema.index({ read: 1 });
+notificationMongooseSchema.index({ createdAt: 1 }); // For cleanup queries
+notificationMongooseSchema.index({ taskId: 1 }); // For task-related queries
 
 // Create models
 export const NotificationModel = mongoose.model<NotificationDocument>('Notification', notificationMongooseSchema);
@@ -192,6 +194,11 @@ export interface NotificationRepository {
     markAsRead(id: string): Promise<NotificationDocument | null>;
     markAsSent(id: string): Promise<NotificationDocument | null>;
     delete(id: string): Promise<boolean>;
+    // Cleanup and rate limiting methods
+    cleanup(olderThan: Date, onlyRead: boolean): Promise<number>;
+    countRecent(userId: string, serverId: string, since: Date): Promise<number>;
+    countServerRecent(serverId: string, since: Date): Promise<number>;
+    archiveForTask(taskId: string): Promise<number>;
 }
 
 export interface NotificationPreferencesRepository {

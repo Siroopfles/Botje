@@ -1,5 +1,5 @@
 import { Task } from '../types/task.js';
-import { Notification, NotificationPreferences } from '../types/notification.js';
+import { Notification, NotificationPreferences, NotificationType } from '../types/notification.js';
 import { NotificationService } from './notificationService.js';
 
 export interface ScheduledNotification {
@@ -85,7 +85,12 @@ export class NotificationScheduler {
             return null;
         }
 
-        if (task.dueDate < currentTime && userPreferences.notifyOnOverdue) {
+        // Only create overdue notification if task just became overdue
+        // Add a small buffer (5 minutes) to avoid edge cases
+        const overdueThreshold = new Date(task.dueDate);
+        const recentlyOverdue = new Date(currentTime.getTime() - 5 * 60000); // 5 minutes ago
+
+        if (task.dueDate < currentTime && overdueThreshold >= recentlyOverdue && userPreferences.notifyOnOverdue) {
             return {
                 notification: NotificationService.createOverdueNotification(
                     task,

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { commands, getCommandsData } from './utils/commandHandler.js';
 import { connect as connectToDb } from 'database';
+import { NotificationWorker } from './workers/notificationWorker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,9 +29,12 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages
     ] 
 });
+
+let notificationWorker: NotificationWorker | null = null;
 
 async function registerCommands() {
     try {
@@ -46,6 +50,17 @@ async function registerCommands() {
         console.log('Registered commands:', JSON.stringify(response, null, 2));
     } catch (error) {
         console.error('Error refreshing commands:', error);
+        throw error;
+    }
+}
+
+async function startNotificationWorker(client: Client) {
+    try {
+        notificationWorker = new NotificationWorker(client);
+        notificationWorker.start();
+        console.log('Notification worker started successfully');
+    } catch (error) {
+        console.error('Failed to start notification worker:', error);
         throw error;
     }
 }
@@ -76,8 +91,11 @@ client.once(Events.ClientReady, async (c) => {
     try {
         await registerCommands();
         console.log('Command registration complete');
+        
+        // Start notification worker
+        await startNotificationWorker(client);
     } catch (error) {
-        console.error('Failed to register commands:', error);
+        console.error('Failed during startup:', error);
         process.exit(1);
     }
 });
@@ -113,6 +131,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply(reply);
         }
     }
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM. Cleaning up...');
+    if (notificationWorker) {
+        notificationWorker.stop();
+    }
+    client.destroy();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('Received SIGINT. Cleaning up...');
+    if (notificationWorker) {
+        notificationWorker.stop();
+    }
+    client.destroy();
+    process.exit(0);
 });
 
 // Start the bot

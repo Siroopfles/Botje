@@ -9,6 +9,5 @@ export * from './schemas/serverSettings.js';
 // Export repositories
 export * from './repositories/taskRepository.js';
 export * from './repositories/notificationRepository.js';
+export * from './repositories/notificationPreferencesRepository.js';
 export * from './repositories/serverSettingsRepository.js';
-
-// Add any additional exports here as they're created
