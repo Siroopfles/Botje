@@ -99,8 +99,8 @@ export class NotificationService {
      */
     private static formatTaskAssignmentContent(task: Task): NotificationContent {
         return {
-            title: '🎯 New Task Assignment',
-            description: `You have been assigned to: ${task.title}`,
+            title: '🎯 Task Assignment',
+            description: `<@${task.assigneeId}> has been assigned to task: ${task.title}`,
             fields: [
                 {
                     name: 'Description',
@@ -128,7 +128,7 @@ export class NotificationService {
     private static formatTaskDueContent(task: Task): NotificationContent {
         return {
             title: '⏰ Task Due Reminder',
-            description: `Task due soon: ${task.title}`,
+            description: `<@${task.assigneeId}>'s task is due soon: ${task.title}`,
             fields: [
                 {
                     name: 'Description',
@@ -156,7 +156,7 @@ export class NotificationService {
     private static formatTaskOverdueContent(task: Task): NotificationContent {
         return {
             title: '❗ Task Overdue',
-            description: `Task is overdue: ${task.title}`,
+            description: `<@${task.assigneeId}>'s task is overdue: ${task.title}`,
             fields: [
                 {
                     name: 'Description',
@@ -184,7 +184,9 @@ export class NotificationService {
     private static formatTaskCompletionContent(task: Task): NotificationContent {
         return {
             title: '✅ Task Completed',
-            description: `Task has been completed: ${task.title}`,
+            description: task.assigneeId 
+                ? `<@${task.assigneeId}> has completed task: ${task.title}`
+                : `Task has been completed: ${task.title}`,
             fields: [
                 {
                     name: 'Description',

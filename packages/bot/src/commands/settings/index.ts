@@ -1,4 +1,3 @@
-import usersettings from './usersettings.js';
-import settings from './settings.js';
-
-export { usersettings, settings };
+export * from './settings.js';
+export * from './usersettings.js';
+export * from './roles.js';

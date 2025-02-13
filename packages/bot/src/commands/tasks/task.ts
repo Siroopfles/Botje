@@ -20,17 +20,41 @@ function formatTaskSummary(task: any): string {
     ].filter(Boolean).join('\n');
 }
 
-function formatTaskList(task: any, index: number): string {
-    return [
-        `${index + 1}. **${task.title}** (ID: ${task.id})`,
-        task.description ? `   Description: ${task.description}` : null,
-        task.assigneeId ? `   Assigned to: <@${task.assigneeId}>` : null,
-        task.dueDate ? `   Due: ${new Date(task.dueDate).toLocaleDateString()}` : null,
-        `   Status: ${task.status}`,
-        task.recurrence?.type ? 
-            `   Repeats: Every ${task.recurrence.interval} ${task.recurrence.type.toLowerCase()}(s)` : null,
-        ''
-    ].filter(Boolean).join('\n');
+// Split tasks into pages that fit within Discord's message limit
+function formatTaskPages(tasks: any[]): string[] {
+    const pages: string[] = [];
+    let currentPage = [`📋 Tasks (Page 1):`];
+    let currentLength = currentPage[0].length;
+
+    tasks.forEach((task, index) => {
+        const taskEntry = [
+            '',
+            `${index + 1}. **${task.title}** (ID: ${task.id})`,
+            task.description ? `   Description: ${task.description}` : null,
+            task.assigneeId ? `   Assigned to: <@${task.assigneeId}>` : null,
+            task.dueDate ? `   Due: ${new Date(task.dueDate).toLocaleDateString()}` : null,
+            `   Status: ${task.status}`,
+            task.recurrence?.type ?
+                `   Repeats: Every ${task.recurrence.interval} ${task.recurrence.type.toLowerCase()}(s)` : null
+        ].filter(Boolean).join('\n');
+
+        // Check if adding this task would exceed Discord's limit
+        if (currentLength + taskEntry.length > 1800) { // Leave some room for safety
+            pages.push(currentPage.join('\n'));
+            currentPage = [`📋 Tasks (Page ${pages.length + 1}):`];
+            currentLength = currentPage[0].length;
+        }
+
+        currentPage.push(taskEntry);
+        currentLength += taskEntry.length;
+    });
+
+    // Add the last page if it has content
+    if (currentPage.length > 1) {
+        pages.push(currentPage.join('\n'));
+    }
+
+    return pages;
 }
 
 async function scheduleTaskNotifications(task: any, serverId: string) {
@@ -356,13 +380,15 @@ export const task: Command = {
                         return;
                     }
 
-                    const response = [
-                        `📋 Tasks${status ? ` (${status})` : ''}:`,
-                        '',
-                        ...tasks.map((task, index) => formatTaskList(task, index))
-                    ].join('\n');
+                    const pages = formatTaskPages(tasks);
+                    
+                    // Send first page as reply
+                    await interaction.editReply(pages[0]);
 
-                    await interaction.editReply(response);
+                    // Send remaining pages as follow-up messages
+                    for (let i = 1; i < pages.length; i++) {
+                        await interaction.followUp(pages[i]);
+                    }
                     break;
                 }
 

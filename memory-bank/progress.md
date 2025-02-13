@@ -37,6 +37,10 @@
   - Duplicate notification prevention
   - Notification cooldown system
   - Overdue notification throttling
+  - Rate limiting implementation
+  - Auto cleanup system
+  - Configurable retention periods
+  - Task completion archiving
   - Tested and working
 - Settings system:
   - User settings:
