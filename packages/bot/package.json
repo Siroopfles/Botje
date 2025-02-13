@@ -9,8 +9,8 @@
     "build": "tsc",
     "start": "node --experimental-specifier-resolution=node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "deploy": "tsx src/deploy-commands.ts",
-    "deploy:guild": "GUILD_ID=your_guild_id tsx src/deploy-commands.ts"
+    "register": "tsx src/deploy-commands.ts",
+    "register:guild": "GUILD_ID=your_guild_id tsx src/deploy-commands.ts"
   },
   "keywords": [],
   "author": "",

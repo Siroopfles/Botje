@@ -2,4 +2,73 @@
 
 This file serves as a learning journal for capturing key insights, patterns, preferences, and project-specific rules.
 
-*Placeholder content. Please update with project-specific details as needed.*
+## Project Patterns
+
+### Architecture
+- Monorepo structure using pnpm workspaces
+- ES modules throughout the project (not CommonJS)
+- TypeScript with strict mode enabled
+- Repository pattern for database access
+- Command pattern for Discord bot commands
+
+### Code Organization
+- Shared types and utilities in packages/shared
+- Database models and repositories in packages/database
+- Bot commands organized by feature in packages/bot/src/commands
+- Subcommand structure for complex features (e.g., task management)
+
+### Development Practices
+- All new code must be TypeScript with proper type definitions
+- Commands must include input validation using Zod
+- Database operations must use the repository pattern
+- Server-specific data isolation for tasks and settings
+- Error handling at both command and database levels
+
+### Task Management
+- Tasks include rich metadata and recurrence patterns
+- Server-specific task isolation
+- Round-robin rotation for task assignments
+- Helper functions for consistent task formatting
+- Support for task completion verification
+
+### Testing Strategy
+- Unit tests required for core functionality
+- Integration tests for database operations
+- Command testing with mock interactions
+- Type-safe test utilities
+
+### Documentation
+- Memory bank structure for project documentation
+- Clear command usage documentation
+- Type documentation for shared interfaces
+- API documentation using OpenAPI/Swagger
+
+## Learned Preferences
+- Prefer subcommands for complex features
+- Use helper functions for consistent formatting
+- Implement strict type validation
+- Maintain server isolation for data
+- Focus on user feedback and error handling
+
+## Project-Specific Rules
+1. Always validate input at both command and database level
+2. Use ES modules import/export syntax
+3. Keep task-related logic in dedicated services
+4. Follow the established command structure pattern
+5. Maintain type safety across package boundaries
+6. Use repository pattern for all database access
+7. Document changes in memory-bank/activeContext.md
+8. Update progress in memory-bank/progress.md
+
+## Known Challenges
+- Task notifications implementation pending
+- Role-based permission system needed
+- Additional rotation strategies required
+- Integration testing framework needs setup
+
+## Tool Usage Patterns
+- Zod for validation
+- MongoDB with Mongoose for data storage
+- Discord.js for bot functionality
+- TypeScript for type safety
+- ES modules for better module organization

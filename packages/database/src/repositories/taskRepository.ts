@@ -1,7 +1,12 @@
+import mongoose from 'mongoose';
 import { Task, TaskStatus } from 'shared';
 import { TaskDocument, TaskModel, TaskRepository } from '../schemas/task.js';
 
 export class MongoTaskRepository implements TaskRepository {
+    private isValidObjectId(id: string): boolean {
+        return mongoose.Types.ObjectId.isValid(id);
+    }
+
     async create(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<TaskDocument> {
         const newTask = new TaskModel(task);
         await newTask.save();
@@ -9,6 +14,9 @@ export class MongoTaskRepository implements TaskRepository {
     }
 
     async findById(id: string): Promise<TaskDocument | null> {
+        if (!this.isValidObjectId(id)) {
+            return null;
+        }
         return TaskModel.findById(id);
     }
 
@@ -23,10 +31,16 @@ export class MongoTaskRepository implements TaskRepository {
     }
 
     async update(id: string, task: Partial<Task>): Promise<TaskDocument | null> {
+        if (!this.isValidObjectId(id)) {
+            return null;
+        }
         return TaskModel.findByIdAndUpdate(id, task, { new: true });
     }
 
     async delete(id: string): Promise<boolean> {
+        if (!this.isValidObjectId(id)) {
+            return false;
+        }
         const result = await TaskModel.findByIdAndDelete(id);
         return result !== null;
     }

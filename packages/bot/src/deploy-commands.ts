@@ -30,6 +30,8 @@ async function deployCommands() {
         console.log('Started refreshing application (/) commands.');
         const commands = getCommandsData();
 
+        console.log('Commands to deploy:', commands.map(cmd => cmd.name));
+
         let data;
         if (guildId) {
             // Guild specific deployment (faster for testing)
