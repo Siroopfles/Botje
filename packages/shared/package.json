@@ -1,0 +1,29 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "description": "Shared utilities and types for Botje",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "typescript": "^5.x",
+    "@types/jest": "^29.x",
+    "jest": "^29.x",
+    "ts-jest": "^29.x"
+  }
+}

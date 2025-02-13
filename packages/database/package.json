@@ -1,0 +1,35 @@
+{
+  "name": "database",
+  "version": "1.0.0",
+  "description": "Database models and utilities for Botje",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mongoose": "^7.x",
+    "shared": "workspace:*",
+    "zod": "^3.x"
+  },
+  "devDependencies": {
+    "@types/mongoose": "^5.11.97",
+    "@types/node": "^18.x",
+    "typescript": "^5.x",
+    "@types/jest": "^29.x",
+    "jest": "^29.x",
+    "ts-jest": "^29.x"
+  }
+}

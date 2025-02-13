@@ -1,0 +1,32 @@
+{
+  "name": "bot",
+  "version": "1.0.0",
+  "description": "Discord bot for task management",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --experimental-specifier-resolution=node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "deploy": "tsx src/deploy-commands.ts",
+    "deploy:guild": "GUILD_ID=your_guild_id tsx src/deploy-commands.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "database": "workspace:*",
+    "shared": "workspace:*",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "typescript": "^5.x",
+    "tsx": "^4.7.1",
+    "@types/jest": "^29.x",
+    "jest": "^29.x",
+    "ts-jest": "^29.x"
+  }
+}
