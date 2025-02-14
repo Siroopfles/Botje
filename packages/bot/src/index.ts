@@ -1,159 +1,133 @@
-import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
+import * as commands from './commands/index.js';
+import { commandHandler } from './utils/commandHandler.js';
+import { roleEvents } from './events/roleEvents.js';
+import { connect } from 'database';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { commands, getCommandsData } from './utils/commandHandler.js';
-import { connect as connectToDb } from 'database';
-import { NotificationWorker } from './workers/notificationWorker.js';
+import { dirname, resolve } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Configure dotenv with explicit path
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPath = resolve(__dirname, '../../..', '.env');
+console.log('Loading .env from:', envPath);
+const result = dotenv.config({ path: envPath });
 
-// Load environment variables from root .env file
-dotenv.config({ path: join(__dirname, '../../../.env') });
+if (result.error) {
+    console.error('Error loading .env file:', result.error);
+    process.exit(1);
+}
 
-const requiredEnvVars = [
-    'DISCORD_BOT_TOKEN',
-    'DISCORD_CLIENT_ID',
-    'MONGODB_URI',
-    'MONGODB_DB_NAME'
-] as const;
+console.log('Environment variables loaded successfully');
 
-requiredEnvVars.forEach(envVar => {
-    if (!process.env[envVar]) {
-        throw new Error(`${envVar} must be provided in environment variables`);
+// Function to validate environment variables
+function validateEnv(): { DISCORD_BOT_TOKEN: string; MONGODB_URI: string; MONGODB_DB_NAME: string } {
+    console.log('Checking required environment variables...');
+    const { DISCORD_BOT_TOKEN, MONGODB_URI, MONGODB_DB_NAME } = process.env;
+
+    const missing = [];
+    if (!DISCORD_BOT_TOKEN) missing.push('DISCORD_BOT_TOKEN');
+    if (!MONGODB_URI) missing.push('MONGODB_URI');
+    if (!MONGODB_DB_NAME) missing.push('MONGODB_DB_NAME');
+
+    if (missing.length > 0) {
+        console.error('Missing required environment variables:', missing.join(', '));
+        throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
-});
 
-const client = new Client({ 
+    console.log('Environment variables validated successfully');
+    return {
+        DISCORD_BOT_TOKEN: DISCORD_BOT_TOKEN as string,
+        MONGODB_URI: MONGODB_URI as string,
+        MONGODB_DB_NAME: MONGODB_DB_NAME as string
+    };
+}
+
+// Create client instance with required intents
+const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
-    ] 
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences
+    ]
 });
 
-let notificationWorker: NotificationWorker | null = null;
-
-async function registerCommands() {
+// Initialize database connection
+async function initDatabase(uri: string, dbName: string): Promise<void> {
     try {
-        const commandData = getCommandsData();
-        console.log('Registering commands with data:', JSON.stringify(commandData, null, 2));
+        console.log('Initializing database connection...');
+        const connection = await connect({ uri, dbName });
 
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
-        const response = await rest.put(
-            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!),
-            { body: commandData }
-        );
-
-        console.log('Registered commands:', JSON.stringify(response, null, 2));
-    } catch (error) {
-        console.error('Error refreshing commands:', error);
-        throw error;
-    }
-}
-
-async function startNotificationWorker(client: Client) {
-    try {
-        notificationWorker = new NotificationWorker(client);
-        notificationWorker.start();
-        console.log('Notification worker started successfully');
-    } catch (error) {
-        console.error('Failed to start notification worker:', error);
-        throw error;
-    }
-}
-
-async function init() {
-    try {
-        console.log('Starting initialization...');
-        console.log('Client ID:', process.env.DISCORD_CLIENT_ID);
-
-        // Connect to database
-        await connectToDb({
-            uri: process.env.MONGODB_URI!,
-            dbName: process.env.MONGODB_DB_NAME!
+        // Handle database disconnection
+        connection.on('disconnected', async () => {
+            console.warn('Database disconnected. Attempting to reconnect...');
+            try {
+                await connect({ uri, dbName });
+                console.log('Successfully reconnected to database');
+            } catch (error) {
+                console.error('Failed to reconnect to database:', error);
+                process.exit(1);
+            }
         });
-        console.log('Connected to database');
 
-        // Log in to Discord
-        await client.login(process.env.DISCORD_BOT_TOKEN);
+        console.log('Database connection established');
     } catch (error) {
-        console.error('Initialization error:', error);
+        console.error('Database initialization failed:', error);
         process.exit(1);
     }
 }
 
-// Handle ready event
-client.once(Events.ClientReady, async (c) => {
-    console.log(`Ready! Logged in as ${c.user.tag}`);
+// Initialize and start bot
+async function startBot() {
     try {
-        await registerCommands();
-        console.log('Command registration complete');
+        // Validate environment variables first
+        const env = validateEnv();
         
-        // Start notification worker
-        await startNotificationWorker(client);
+        // Initialize database connection
+        await initDatabase(env.MONGODB_URI, env.MONGODB_DB_NAME);
+        
+        // Initialize command handling
+        commandHandler.registerCommands(commands);
+        commandHandler.setupEvents(client);
+
+        // Set up role event handling
+        console.log('Setting up role event handlers...');
+        Object.entries(roleEvents).forEach(([event, handler]) => {
+            client.on(event as any, handler);
+        });
+
+        // Login to Discord
+        console.log('Logging in to Discord...');
+        await client.login(env.DISCORD_BOT_TOKEN);
+
+        // Bot ready event
+        client.once(Events.ClientReady, c => {
+            console.log(`Ready! Logged in as ${c.user.tag}`);
+        });
+
+        // Error handling
+        client.on(Events.Error, error => {
+            console.error('Discord client error:', error);
+        });
+
     } catch (error) {
-        console.error('Failed during startup:', error);
+        console.error('Failed to start bot:', error);
         process.exit(1);
     }
-});
+}
 
-// Handle interactions
-client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) {
-        console.log('Received non-command interaction:', interaction.type);
-        return;
-    }
-
-    console.log(`Received command interaction: ${interaction.commandName}`);
-    const command = commands.get(interaction.commandName);
-    
-    if (!command) {
-        console.log(`Command not found: ${interaction.commandName}`);
-        return;
-    }
-
-    try {
-        console.log(`Executing command: ${interaction.commandName}`);
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(`Error executing command ${interaction.commandName}:`, error);
-        const reply = {
-            content: 'There was an error executing this command!',
-            ephemeral: true
-        };
-        
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(reply);
-        } else {
-            await interaction.reply(reply);
-        }
-    }
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-    console.log('Received SIGTERM. Cleaning up...');
-    if (notificationWorker) {
-        notificationWorker.stop();
-    }
-    client.destroy();
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('Received SIGINT. Cleaning up...');
+    await client.destroy();
     process.exit(0);
 });
 
-process.on('SIGINT', () => {
-    console.log('Received SIGINT. Cleaning up...');
-    if (notificationWorker) {
-        notificationWorker.stop();
-    }
-    client.destroy();
+process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM. Cleaning up...');
+    await client.destroy();
     process.exit(0);
 });
 
 // Start the bot
-init().catch(error => {
-    console.error('Failed to start bot:', error);
-    process.exit(1);
-});
+startBot();

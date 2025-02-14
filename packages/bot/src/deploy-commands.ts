@@ -1,60 +1,116 @@
-import { REST, Routes } from 'discord.js';
-import dotenv from 'dotenv';
+import { REST, Routes, RESTPostAPIChatInputApplicationCommandsJSONBody, SlashCommandBuilder } from 'discord.js';
+import { Command } from './types/command.js';
+import * as commands from './commands/index.js';
+import { connect } from 'database';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { getCommandsData } from './utils/commandHandler.js';
+import dotenv from 'dotenv';
+import { dirname, resolve } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPath = resolve(__dirname, '../../..', '.env');
+console.log('Loading .env from:', envPath);
+const result = dotenv.config({ path: envPath });
 
-// Load environment variables
-dotenv.config({ path: join(__dirname, '../../../.env') });
-
-// Required environment variables
-const requiredVars = ['DISCORD_BOT_TOKEN', 'DISCORD_CLIENT_ID'] as const;
-const missingVars = requiredVars.filter(key => !process.env[key]);
-
-if (missingVars.length > 0) {
-    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+if (result.error) {
+    console.error('Error loading .env file:', result.error);
+    process.exit(1);
 }
 
-// Type assertion since we've verified these exist
-const token = process.env.DISCORD_BOT_TOKEN as string;
-const clientId = process.env.DISCORD_CLIENT_ID as string;
-const guildId = process.env.GUILD_ID;
+console.log('Environment variables loaded successfully');
 
-const rest = new REST({ version: '10' }).setToken(token);
+// Function to validate environment variables
+function validateEnv(): { 
+    DISCORD_BOT_TOKEN: string; 
+    DISCORD_CLIENT_ID: string;
+    MONGODB_URI: string;
+    MONGODB_DB_NAME: string;
+} {
+    console.log('Checking required environment variables...');
+    const { DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, MONGODB_URI, MONGODB_DB_NAME } = process.env;
 
-async function deployCommands() {
+    const missing = [];
+    if (!DISCORD_BOT_TOKEN) missing.push('DISCORD_BOT_TOKEN');
+    if (!DISCORD_CLIENT_ID) missing.push('DISCORD_CLIENT_ID');
+    if (!MONGODB_URI) missing.push('MONGODB_URI');
+    if (!MONGODB_DB_NAME) missing.push('MONGODB_DB_NAME');
+
+    if (missing.length > 0) {
+        console.error('Missing required environment variables:', missing.join(', '));
+        throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+
+    console.log('Environment variables validated successfully');
+    return {
+        DISCORD_BOT_TOKEN: DISCORD_BOT_TOKEN as string,
+        DISCORD_CLIENT_ID: DISCORD_CLIENT_ID as string,
+        MONGODB_URI: MONGODB_URI as string,
+        MONGODB_DB_NAME: MONGODB_DB_NAME as string
+    };
+}
+
+const env = validateEnv();
+
+const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
+
+function isCommand(value: any): value is Command {
+    return value && 'data' in value && 'execute' in value;
+}
+
+function isSlashCommand(data: any): data is SlashCommandBuilder {
+    return data && typeof data.toJSON === 'function';
+}
+
+export async function deployCommands(guildId?: string) {
     try {
-        console.log('Started refreshing application (/) commands.');
-        const commands = getCommandsData();
+        console.log('Initializing database connection...');
+        // Ensure database connection
+        await connect({
+            uri: env.MONGODB_URI,
+            dbName: env.MONGODB_DB_NAME
+        });
+        console.log('Database connection established');
 
-        console.log('Commands to deploy:', commands.map(cmd => cmd.name));
+        const commandsData: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 
-        let data;
-        if (guildId) {
-            // Guild specific deployment (faster for testing)
-            console.log(`Deploying commands to guild: ${guildId}`);
-            data = await rest.put(
-                Routes.applicationGuildCommands(clientId, guildId),
-                { body: commands }
-            );
-        } else {
-            // Global deployment
-            console.log('Deploying commands globally');
-            data = await rest.put(
-                Routes.applicationCommands(clientId),
-                { body: commands }
-            );
+        // Collect all command data
+        console.log('Collecting command data...');
+        for (const module of Object.values(commands)) {
+            for (const exportedItem of Object.values(module)) {
+                if (isCommand(exportedItem) && isSlashCommand(exportedItem.data)) {
+                    commandsData.push(exportedItem.data.toJSON());
+                }
+            }
         }
 
-        console.log(`Successfully reloaded ${(data as any[]).length} application (/) commands.`);
-        console.log('Commands:', JSON.stringify(data, null, 2));
+        const route = guildId 
+            ? Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID, guildId)
+            : Routes.applicationCommands(env.DISCORD_CLIENT_ID);
+
+        console.log(`Started refreshing ${commandsData.length} application (/) commands.`);
+        console.log(guildId ? `Deploying to guild: ${guildId}` : 'Deploying globally');
+
+        // Deploy commands
+        const data = await rest.put(route, { body: commandsData });
+
+        console.log(`Successfully reloaded application (/) commands.`);
+        return data;
+
     } catch (error) {
         console.error('Error deploying commands:', error);
-        process.exit(1);
+        throw error;
     }
 }
 
-deployCommands();
+// Run deployment if called directly
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const guildId = process.env.GUILD_ID || process.argv[2];
+    deployCommands(guildId)
+        .then(() => {
+            console.log('Command deployment completed successfully');
+            process.exit(0);
+        })
+        .catch(error => {
+            console.error('Deployment failed:', error);
+            process.exit(1);
+        });
+}

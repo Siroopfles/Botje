@@ -10,6 +10,9 @@ A Discord bot with web dashboard for managing cleaning tasks and schedules withi
 - Real-time notifications
 - Schedule management
 - Performance tracking
+- Role-based permissions
+- Automated cleanup
+- Rate limiting
 
 ## Development Setup
 
@@ -50,6 +53,41 @@ pnpm dev:bot
 # Deploy commands
 pnpm --filter bot deploy-commands
 ```
+
+## Permission System
+
+The bot uses role-based access control with three default roles:
+
+### Default Roles
+- **Admin**: Full system access
+- **Moderator**: Task and notification management
+- **User**: Basic task operations
+
+### Setting Up Roles
+```bash
+# Initialize default roles
+/roles init
+
+# Create custom role
+/roles create name:"Custom Role" permissions:CREATE_TASK,VIEW_ALL_TASKS
+
+# Assign role
+/roles assign user:@username role-id:123456789
+```
+
+### Task Permissions
+- CREATE_TASK: Create new tasks
+- EDIT_ANY_TASK: Edit any task
+- EDIT_OWN_TASK: Edit assigned tasks
+- DELETE_ANY_TASK: Delete any task
+- DELETE_OWN_TASK: Delete assigned tasks
+- VIEW_ALL_TASKS: View all tasks
+
+### Management Permissions
+- MANAGE_ROLES: Create and delete roles
+- ASSIGN_ROLES: Assign existing roles
+- MANAGE_SERVER_SETTINGS: Configure server settings
+- MANAGE_NOTIFICATIONS: Configure notification settings
 
 ## Project Structure
 

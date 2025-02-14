@@ -20,10 +20,7 @@ export enum Permission {
     SET_NOTIFICATION_CHANNEL = 'SET_NOTIFICATION_CHANNEL',
     
     // Role Management
-    ASSIGN_ROLES = 'ASSIGN_ROLES',
-
-    // User Management
-    MANAGE_USERS = 'MANAGE_USERS'
+    ASSIGN_ROLES = 'ASSIGN_ROLES'
 }
 
 export interface Role {
@@ -32,6 +29,7 @@ export interface Role {
     serverId: string;
     permissions: Permission[];
     assignableBy: Permission[];
+    discordRoleId?: string;
     createdAt?: Date;
     updatedAt?: Date;
 }

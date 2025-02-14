@@ -59,12 +59,16 @@ This file serves as a learning journal for capturing key insights, patterns, pre
 6. Use repository pattern for all database access
 7. Document changes in memory-bank/activeContext.md
 8. Update progress in memory-bank/progress.md
+9. Implement rate limiting for intensive operations
+10. Set up automatic cleanup for old data
 
 ## Known Challenges
-- Task notifications implementation pending
-- Role-based permission system needed
+- Role-based permission system implementation
 - Additional rotation strategies required
 - Integration testing framework needs setup
+- Fine-tuning rate limits and cleanup timing
+- Monitoring notification system performance
+- Testing complex notification scenarios
 
 ## Tool Usage Patterns
 - Zod for validation
@@ -72,3 +76,6 @@ This file serves as a learning journal for capturing key insights, patterns, pre
 - Discord.js for bot functionality
 - TypeScript for type safety
 - ES modules for better module organization
+- Rate limiting for API and command protection
+- Scheduled jobs for automated cleanup
+- In-memory cooldown tracking

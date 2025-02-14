@@ -8,6 +8,7 @@ export const roleSchema = z.object({
     serverId: z.string(),
     permissions: z.array(z.nativeEnum(Permission)),
     assignableBy: z.array(z.nativeEnum(Permission)),
+    discordRoleId: z.string().optional(),
     createdAt: z.date(),
     updatedAt: z.date()
 });
@@ -54,7 +55,11 @@ const roleMongooseSchema = new Schema({
         type: String,
         enum: Object.values(Permission),
         required: true
-    }]
+    }],
+    discordRoleId: {
+        type: String,
+        required: false
+    }
 }, {
     timestamps: true,
     versionKey: false,
@@ -97,6 +102,7 @@ const userRoleMongooseSchema = new Schema({
 
 // Create indexes
 roleMongooseSchema.index({ serverId: 1, name: 1 }, { unique: true });
+roleMongooseSchema.index({ serverId: 1, discordRoleId: 1 }, { unique: true, sparse: true });
 userRoleMongooseSchema.index({ userId: 1, serverId: 1, roleId: 1 }, { unique: true });
 userRoleMongooseSchema.index({ serverId: 1 });
 userRoleMongooseSchema.index({ expiresAt: 1 });

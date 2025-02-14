@@ -15,3 +15,4 @@ export * from './types/serverSettings.js';
 
 // Permission system
 export * from './types/permission.js';
+export * from './permission/permissionService.js';
