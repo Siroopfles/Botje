@@ -20,7 +20,16 @@
 ### Discord Integration
 - **Framework**: discord.js
 - **Command Handler**: Custom implementation with TypeScript
-- **Permissions**: discord.js built-in permission system
+- **Permissions**:
+  - Role-based permission system
+  - Two-way Discord role sync
+  - Permission inheritance
+  - Role state management
+  - Assignment tracking
+  - Performance monitoring
+  - Cache invalidation
+  - Automatic cleanup
+  - State reconciliation
 - **Known Issues**:
   - Ephemeral flag deprecation warning in v14.x (using ephemeral: true)
   - Future upgrade path: Switch to MessageFlags when discord.js provides new API

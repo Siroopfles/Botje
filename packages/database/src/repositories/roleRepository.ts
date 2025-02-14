@@ -32,6 +32,10 @@ export class MongoRoleRepository implements RoleRepository {
         return RoleModel.findOne({ serverId, name });
     }
 
+    async findByDiscordId(serverId: string, discordRoleId: string): Promise<RoleDocument | null> {
+        return RoleModel.findOne({ serverId, discordRoleId });
+    }
+
     async update(id: string, role: Partial<Role>): Promise<RoleDocument | null> {
         if (!this.isValidObjectId(id)) {
             return null;

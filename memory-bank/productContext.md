@@ -32,6 +32,10 @@ This Discord bot with web dashboard aims to solve the common challenge of managi
 - Seamless integration with existing Discord communities
 - Natural command syntax that feels intuitive to Discord users
 - Real-time notifications that don't feel intrusive
+- Role-based permission system with inheritance
+- Automatic role synchronization
+- State consistency and cleanup
+- Performance optimized operations
 
 ### Web Dashboard
 - Clean, intuitive interface for both desktop and mobile

@@ -26,7 +26,13 @@ graph TD
   - Command parsing and validation
   - Event handling
   - Real-time user interactions
-  - Permission management
+  - Permission management with role hierarchy
+  - Two-way Discord role sync
+  - Automatic state reconciliation
+  - Role cleanup and recovery
+  - Performance monitoring
+  - Cache invalidation
+  - Role assignment tracking
 
 ### 2. Web Dashboard
 - **Pattern**: MVC (Model-View-Controller)

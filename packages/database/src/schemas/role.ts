@@ -117,6 +117,7 @@ export interface RoleRepository {
     findById(id: string): Promise<RoleDocument | null>;
     findByServerId(serverId: string): Promise<RoleDocument[]>;
     findByName(serverId: string, name: string): Promise<RoleDocument | null>;
+    findByDiscordId(serverId: string, discordRoleId: string): Promise<RoleDocument | null>;
     update(id: string, role: Partial<Role>): Promise<RoleDocument | null>;
     delete(id: string): Promise<boolean>;
 }
