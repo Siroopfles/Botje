@@ -9,6 +9,7 @@ import {
     createRoleRepository,
     createUserRoleRepository
 } from 'database';
+import { startRoleInitialization, finishRoleInitialization } from '../../events/roleEvents.js';
 
 // Create repositories once
 const roleRepo = createRoleRepository();
@@ -33,24 +34,6 @@ async function createDiscordRole(guild: Guild, role: Role): Promise<string> {
     }
 }
 
-// Helper function to safely delete roles
-async function deleteExistingRoles(serverId: string, guild: Guild): Promise<void> {
-    const existingRoles = await roleRepo.findByServerId(serverId);
-    for (const role of existingRoles) {
-        try {
-            if (role.discordRoleId) {
-                const discordRole = await guild.roles.fetch(role.discordRoleId).catch(() => null);
-                if (discordRole) {
-                    await discordRole.delete('Recreating roles');
-                }
-            }
-            await roleRepo.delete(role.id);
-        } catch (error) {
-            console.error(`Error deleting role ${role.name}:`, error);
-        }
-    }
-}
-
 export const roles: Command = {
     data: new SlashCommandBuilder()
         .setName('roles')
@@ -66,6 +49,11 @@ export const roles: Command = {
                         .setDescription('Delete existing roles and recreate them')
                         .setRequired(false)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('sync')
+                .setDescription('Sync Discord roles with database')
         )
         .addSubcommand(subcommand =>
             subcommand
@@ -143,64 +131,167 @@ export const roles: Command = {
 
             switch (subcommand) {
                 case 'init': {
-                    // Check if roles already exist
-                    const existingRoles = await roleRepo.findByServerId(interaction.guildId!);
                     const force = interaction.options.getBoolean('force') ?? false;
 
-                    if (existingRoles.length > 0) {
-                        if (!force) {
+                    // Start initialization to prevent event handlers from interfering
+                    startRoleInitialization(interaction.guildId!);
+
+                    try {
+                        // Get current state
+                        const dbRoles = await roleRepo.findByServerId(interaction.guildId!);
+                        
+                        if (force) {
+                            await interaction.editReply('🔄 Deleting all roles...');
+                            
+                            // Delete all roles from database first
+                            for (const role of dbRoles) {
+                                // Delete user assignments
+                                const userRoles = await userRoleRepo.findByRole(role.id);
+                                for (const userRole of userRoles) {
+                                    await userRoleRepo.delete(userRole.id);
+                                }
+                                // Delete database role
+                                await roleRepo.delete(role.id);
+                            }
+                        } else if (dbRoles.length > 0) {
                             await interaction.editReply({
                                 content: '⚠️ Roles already exist. Use `/roles init force:true` to recreate roles or `/roles list` to see existing roles.'
                             });
                             return;
                         }
 
-                        await deleteExistingRoles(interaction.guildId!, interaction.guild!);
-                    }
-                    
-                    // Create default roles
-                    const defaultRoles = createDefaultRoles(interaction.guildId!);
-                    const createdRoles = [];
+                        await interaction.editReply('🔄 Creating default roles...');
 
-                    for (const role of defaultRoles) {
-                        try {
-                            // Create Discord role first
-                            const discordRoleId = await createDiscordRole(interaction.guild!, role);
-                            
-                            // Add Discord role ID to our role data
-                            const dbRole = await roleRepo.create({
-                                ...role,
-                                discordRoleId
-                            });
-                            
-                            createdRoles.push({
-                                name: dbRole.name,
-                                id: dbRole.id,
-                                discordRoleId
-                            });
-                        } catch (error) {
-                            console.error(`Failed to create role ${role.name}:`, error);
-                            // Clean up any created roles on failure
-                            for (const created of createdRoles) {
-                                try {
-                                    const discordRole = await interaction.guild!.roles.fetch(created.discordRoleId);
-                                    if (discordRole) await discordRole.delete();
-                                    await roleRepo.delete(created.id);
-                                } catch (cleanupError) {
-                                    console.error('Error during cleanup:', cleanupError);
+                        // Create default roles
+                        const defaultRoles = createDefaultRoles(interaction.guildId!);
+                        const createdRoles = [];
+
+                        for (const role of defaultRoles) {
+                            try {
+                                // Create new Discord role
+                                const discordRoleId = await createDiscordRole(interaction.guild!, role);
+                                
+                                // Create database entry
+                                const dbRole = await roleRepo.create({
+                                    ...role,
+                                    discordRoleId
+                                });
+                                
+                                createdRoles.push({
+                                    name: dbRole.name,
+                                    id: dbRole.id,
+                                    discordRoleId
+                                });
+                            } catch (error) {
+                                // Clean up on failure
+                                for (const created of createdRoles) {
+                                    try {
+                                        const discordRole = await interaction.guild!.roles.fetch(created.discordRoleId);
+                                        if (discordRole) await discordRole.delete();
+                                        await roleRepo.delete(created.id);
+                                    } catch (cleanupError) {
+                                        console.error('Error during cleanup:', cleanupError);
+                                    }
                                 }
+                                throw error;
                             }
-                            throw new Error(`Failed to create role ${role.name}`);
                         }
-                    }
 
-                    await interaction.editReply({
-                        content: `✅ ${force ? 'Recreated' : 'Created'} ${createdRoles.length} default roles:\n${
-                            createdRoles.map(role => 
-                                `- ${role.name} (ID: ${role.id})`
-                            ).join('\n')
-                        }`
-                    });
+                        await interaction.editReply({
+                            content: `✅ ${force ? 'Recreated' : 'Created'} ${createdRoles.length} default roles:\n${
+                                createdRoles.map(role => 
+                                    `- ${role.name} (ID: ${role.id})`
+                                ).join('\n')
+                            }`
+                        });
+                    } finally {
+                        finishRoleInitialization(interaction.guildId!);
+                    }
+                    break;
+                }
+
+                case 'sync': {
+                    startRoleInitialization(interaction.guildId!);
+
+                    try {
+                        await interaction.editReply('🔄 Syncing roles and assignments...');
+
+                        // Get all Discord roles and members
+                        const discordRoles = await interaction.guild!.roles.fetch();
+                        const discordMembers = await interaction.guild!.members.fetch();
+                        const syncedRoles = [];
+                        const syncedAssignments = [];
+
+                        // Get all roles that aren't managed by Discord and aren't @everyone
+                        const validRoles = discordRoles.filter(role => 
+                            !role.managed && role.id !== interaction.guildId
+                        );
+
+                        for (const [_, discordRole] of validRoles) {
+                            try {
+                                let dbRole = await roleRepo.findByName(interaction.guildId!, discordRole.name);
+                                
+                                // Create role in database if it doesn't exist
+                                if (!dbRole) {
+                                    dbRole = await roleRepo.create({
+                                        name: discordRole.name,
+                                        serverId: interaction.guildId!,
+                                        permissions: [Permission.VIEW_ALL_TASKS],
+                                        assignableBy: [Permission.MANAGE_ROLES],
+                                        discordRoleId: discordRole.id
+                                    });
+                                    syncedRoles.push(dbRole.name);
+                                }
+
+                                // Sync role assignments
+                                const membersWithRole = discordMembers.filter(member => 
+                                    member.roles.cache.has(discordRole.id)
+                                );
+
+                                for (const [memberId, member] of membersWithRole) {
+                                    try {
+                                        // Check if assignment already exists
+                                        const userRoles = await userRoleRepo.findByRole(dbRole.id);
+                                        const existingAssignment = userRoles.find(ur => ur.userId === memberId);
+
+                                        if (!existingAssignment) {
+                                            await userRoleRepo.create({
+                                                userId: memberId,
+                                                serverId: interaction.guildId!,
+                                                roleId: dbRole.id,
+                                                assignedBy: 'SYNC',
+                                                assignedAt: new Date()
+                                            });
+                                            syncedAssignments.push(`${member.user.tag} → ${dbRole.name}`);
+                                        }
+                                    } catch (error) {
+                                        console.error(`Error syncing role assignment for ${member.user.tag}:`, error);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`Error syncing role ${discordRole.name}:`, error);
+                            }
+                        }
+
+                        // Prepare response message
+                        let message = '';
+                        
+                        if (syncedRoles.length > 0) {
+                            message += `✅ Synced ${syncedRoles.length} roles:\n${syncedRoles.map(name => `- ${name}`).join('\n')}\n\n`;
+                        }
+                        
+                        if (syncedAssignments.length > 0) {
+                            message += `✅ Created ${syncedAssignments.length} role assignments:\n${syncedAssignments.map(a => `- ${a}`).join('\n')}`;
+                        }
+
+                        if (!message) {
+                            message = '✅ All roles and assignments are already synced';
+                        }
+
+                        await interaction.editReply({ content: message });
+                    } finally {
+                        finishRoleInitialization(interaction.guildId!);
+                    }
                     break;
                 }
 
@@ -245,6 +336,8 @@ export const roles: Command = {
                     };
 
                     try {
+                        startRoleInitialization(interaction.guildId!);
+
                         // Create Discord role first
                         const discordRoleId = await createDiscordRole(interaction.guild!, newRole);
 
@@ -260,6 +353,8 @@ export const roles: Command = {
                     } catch (error) {
                         console.error('Error creating role:', error);
                         await interaction.editReply('❌ Failed to create role. It might already exist.');
+                    } finally {
+                        finishRoleInitialization(interaction.guildId!);
                     }
                     break;
                 }
@@ -326,6 +421,14 @@ export const roles: Command = {
                     }
 
                     try {
+                        startRoleInitialization(interaction.guildId!);
+
+                        // Delete user role assignments first
+                        const userRoles = await userRoleRepo.findByRole(roleId);
+                        for (const userRole of userRoles) {
+                            await userRoleRepo.delete(userRole.id);
+                        }
+
                         // Delete Discord role if it exists
                         if (role.discordRoleId) {
                             const discordRole = await interaction.guild!.roles.fetch(role.discordRoleId);
@@ -345,6 +448,8 @@ export const roles: Command = {
                     } catch (error) {
                         console.error('Error deleting role:', error);
                         await interaction.editReply('❌ Failed to delete role');
+                    } finally {
+                        finishRoleInitialization(interaction.guildId!);
                     }
                     break;
                 }

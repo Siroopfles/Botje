@@ -1,4 +1,6 @@
 import { Permission, Role, UserRole, hasPermission } from '../types/permission.js';
+import { permissionCache } from './permissionCache.js';
+import { permissionMetrics } from './permissionMetrics.js';
 
 // Interfaces from database package
 interface RoleRepository {
@@ -13,20 +15,7 @@ interface UserRoleRepository {
     findByUser(userId: string, serverId: string): Promise<UserRoleDocument[]>;
 }
 
-interface PermissionCache {
-    [userId: string]: {
-        [serverId: string]: {
-            permissions: Permission[];
-            roles: Role[];
-            lastUpdated: number;
-        }
-    }
-}
-
 export class PermissionService {
-    private static readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-    private static cache: PermissionCache = {};
-
     /**
      * Check if a user has a specific permission in a server
      */
@@ -38,14 +27,50 @@ export class PermissionService {
         userRoleRepo: UserRoleRepository,
         options: { ignoreCache?: boolean } = {}
     ): Promise<boolean> {
-        const userPermissions = await this.getUserPermissions(
-            userId, 
-            serverId, 
-            roleRepo,
-            userRoleRepo,
-            options
-        );
-        return hasPermission(userPermissions, permission);
+        const startTime = Date.now();
+        let cacheHit = false;
+        let result = false;
+
+        try {
+            // Check permission cache first
+            if (!options.ignoreCache) {
+                const cached = permissionCache.getCachedPermission({ userId, serverId, permission });
+                if (cached !== null) {
+                    cacheHit = true;
+                    result = cached;
+                    return result;
+                }
+            }
+
+            // Get user permissions and check
+            const userPermissions = await this.getUserPermissions(
+                userId,
+                serverId,
+                roleRepo,
+                userRoleRepo,
+                options
+            );
+            
+            result = hasPermission(userPermissions, permission);
+
+            // Cache the result
+            if (!options.ignoreCache) {
+                permissionCache.cachePermission({ userId, serverId, permission }, result);
+            }
+
+            return result;
+        } finally {
+            // Record metrics
+            permissionMetrics.recordCheck({
+                timestamp: startTime,
+                userId,
+                serverId,
+                permission,
+                duration: Date.now() - startTime,
+                cacheHit,
+                granted: result
+            });
+        }
     }
 
     /**
@@ -58,28 +83,14 @@ export class PermissionService {
         userRoleRepo: UserRoleRepository,
         options: { ignoreCache?: boolean } = {}
     ): Promise<Permission[]> {
-        // Check cache first
-        if (!options.ignoreCache && this.isCacheValid(userId, serverId)) {
-            return this.cache[userId]?.[serverId]?.permissions ?? [];
-        }
-
-        // Get user's roles
-        const userRoles = await userRoleRepo.findByUser(userId, serverId);
-        const roles = await Promise.all(
-            userRoles.map((ur: UserRoleDocument) => roleRepo.findById(ur.roleId))
-        );
-
+        // Get roles first (they might be cached)
+        const roles = await this.getUserRoles(userId, serverId, roleRepo, userRoleRepo, options);
+        
         // Combine permissions from all roles
         const permissions = new Set<Permission>();
-        roles.forEach((role: Role | null) => {
-            if (role) {
-                role.permissions.forEach((p: Permission) => permissions.add(p));
-            }
+        roles.forEach(role => {
+            role.permissions.forEach(p => permissions.add(p));
         });
-
-        // Update cache
-        const validRoles = roles.filter((r: Role | null): r is Role => r !== null);
-        this.updateCache(userId, serverId, Array.from(permissions), validRoles);
 
         return Array.from(permissions);
     }
@@ -95,19 +106,24 @@ export class PermissionService {
         options: { ignoreCache?: boolean } = {}
     ): Promise<Role[]> {
         // Check cache first
-        if (!options.ignoreCache && this.isCacheValid(userId, serverId)) {
-            return this.cache[userId]?.[serverId]?.roles ?? [];
+        if (!options.ignoreCache) {
+            const cached = permissionCache.getCachedRoles(userId, serverId);
+            if (cached !== null) {
+                return cached;
+            }
         }
 
-        // Get user's roles
+        // Get user's roles from database
         const userRoles = await userRoleRepo.findByUser(userId, serverId);
         const roles = await Promise.all(
-            userRoles.map((ur: UserRoleDocument) => roleRepo.findById(ur.roleId))
+            userRoles.map(ur => roleRepo.findById(ur.roleId))
         );
 
-        // Filter out null values and update cache
-        const validRoles = roles.filter((r: Role | null): r is Role => r !== null);
-        this.updateCache(userId, serverId, this.getRolePermissions(validRoles), validRoles);
+        // Filter out null values and cache
+        const validRoles = roles.filter((r): r is Role => r !== null);
+        if (!options.ignoreCache) {
+            permissionCache.cacheRoles(userId, serverId, validRoles);
+        }
 
         return validRoles;
     }
@@ -122,70 +138,61 @@ export class PermissionService {
         roleRepo: RoleRepository,
         userRoleRepo: UserRoleRepository
     ): Promise<boolean> {
-        const role = await roleRepo.findById(roleId);
-        if (!role) {
-            return false;
+        const startTime = Date.now();
+        let result = false;
+
+        try {
+            const role = await roleRepo.findById(roleId);
+            if (!role) {
+                return false;
+            }
+
+            const userPermissions = await this.getUserPermissions(userId, serverId, roleRepo, userRoleRepo);
+            result = role.assignableBy.some(permission => hasPermission(userPermissions, permission));
+            return result;
+        } finally {
+            // Record metrics for role assignment checks
+            permissionMetrics.recordCheck({
+                timestamp: startTime,
+                userId,
+                serverId,
+                permission: Permission.ASSIGN_ROLES,
+                duration: Date.now() - startTime,
+                cacheHit: false, // Role assignment always checks fresh
+                granted: result
+            });
         }
-
-        const userPermissions = await this.getUserPermissions(userId, serverId, roleRepo, userRoleRepo);
-        return role.assignableBy.some((permission: Permission) => hasPermission(userPermissions, permission));
     }
 
     /**
-     * Get combined permissions from multiple roles
-     */
-    private static getRolePermissions(roles: Role[]): Permission[] {
-        const permissions = new Set<Permission>();
-        roles.forEach(role => {
-            role.permissions.forEach((p: Permission) => permissions.add(p));
-        });
-        return Array.from(permissions);
-    }
-
-    /**
-     * Update the permission cache
-     */
-    private static updateCache(
-        userId: string,
-        serverId: string,
-        permissions: Permission[],
-        roles: Role[]
-    ): void {
-        this.cache[userId] = this.cache[userId] || {};
-        this.cache[userId][serverId] = {
-            permissions,
-            roles,
-            lastUpdated: Date.now()
-        };
-    }
-
-    /**
-     * Check if cached data is still valid
-     */
-    private static isCacheValid(userId: string, serverId: string): boolean {
-        const cached = this.cache[userId]?.[serverId];
-        if (!cached) {
-            return false;
-        }
-
-        return Date.now() - cached.lastUpdated < this.CACHE_TTL;
-    }
-
-    /**
-     * Clear the cache for a user in a server
+     * Clear cached data for a user in a server
      */
     public static clearCache(userId: string, serverId?: string): void {
         if (serverId) {
-            delete this.cache[userId]?.[serverId];
+            permissionCache.invalidateUserRoles(userId, serverId);
         } else {
-            delete this.cache[userId];
+            // If no serverId, clear all servers for this user
+            // This is a bit inefficient but safer
+            const stats = permissionCache.getStats();
+            // Clear and let it rebuild as needed
+            permissionCache.clear();
         }
     }
 
     /**
-     * Clear entire permission cache
+     * Clear all cached permission data
      */
     public static clearAllCache(): void {
-        this.cache = {};
+        permissionCache.clear();
+    }
+
+    /**
+     * Get permission system statistics
+     */
+    public static getStats() {
+        return {
+            cache: permissionCache.getStats(),
+            metrics: permissionMetrics.getStats()
+        };
     }
 }

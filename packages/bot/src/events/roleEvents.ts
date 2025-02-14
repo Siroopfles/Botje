@@ -6,11 +6,28 @@ import { Permission } from 'shared';
 const roleRepo = createRoleRepository();
 const userRoleRepo = createUserRoleRepository();
 
+// Track roles being initialized to prevent duplicate creation
+const initializingServers = new Set<string>();
+
+export function startRoleInitialization(serverId: string): void {
+    initializingServers.add(serverId);
+}
+
+export function finishRoleInitialization(serverId: string): void {
+    initializingServers.delete(serverId);
+}
+
 /**
  * Handle when a new role is created in Discord
  */
 export async function handleRoleCreate(role: Role) {
     try {
+        // Skip if server is currently initializing roles
+        if (initializingServers.has(role.guild.id)) {
+            console.log(`Skipping auto-creation for role ${role.name} during initialization`);
+            return;
+        }
+
         // Check if role already exists in database
         const serverRoles = await roleRepo.findByServerId(role.guild.id);
         const existingRole = serverRoles.find(r => r.discordRoleId === role.id);
@@ -108,6 +125,12 @@ export async function handleGuildMemberUpdate(oldMember: GuildMember, newMember:
  */
 export async function handleRoleDelete(role: Role) {
     try {
+        // Skip if server is currently initializing roles
+        if (initializingServers.has(role.guild.id)) {
+            console.log(`Skipping deletion handling for role ${role.name} during initialization`);
+            return;
+        }
+
         // Find the role in our database by Discord ID
         const serverRoles = await roleRepo.findByServerId(role.guild.id);
         const dbRole = serverRoles.find(r => r.discordRoleId === role.id);

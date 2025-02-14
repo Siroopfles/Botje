@@ -21,6 +21,9 @@
 - **Framework**: discord.js
 - **Command Handler**: Custom implementation with TypeScript
 - **Permissions**: discord.js built-in permission system
+- **Known Issues**:
+  - Ephemeral flag deprecation warning in v14.x (using ephemeral: true)
+  - Future upgrade path: Switch to MessageFlags when discord.js provides new API
 
 ### DevOps
 - **Version Control**: Git
