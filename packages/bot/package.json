@@ -12,7 +12,10 @@
     "register": "pnpm build:deps && tsx src/deploy-commands.ts",
     "register:guild": "pnpm build:deps && GUILD_ID=your_guild_id tsx src/deploy-commands.ts",
     "build:deps": "cd ../shared && pnpm build && cd ../database && pnpm build",
-    "build:all": "pnpm build:deps && pnpm build"
+    "build:all": "pnpm build:deps && pnpm build",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +31,7 @@
     "typescript": "^5.x",
     "tsx": "^4.7.1",
     "@types/jest": "^29.x",
+    "@jest/globals": "^29.x",
     "jest": "^29.x",
     "ts-jest": "^29.x"
   }

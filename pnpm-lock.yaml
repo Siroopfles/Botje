@@ -36,6 +36,9 @@ importers:
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      '@jest/globals':
+        specifier: ^29.x
+        version: 29.7.0
       '@types/jest':
         specifier: ^29.x
         version: 29.5.14

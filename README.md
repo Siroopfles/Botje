@@ -54,6 +54,55 @@ pnpm dev:bot
 pnpm --filter bot deploy-commands
 ```
 
+## Command System
+
+### Available Commands
+
+- `/roles` - Role management and synchronization
+  - `init` - Initialize default roles
+  - `create` - Create a new role
+  - `delete` - Delete a role
+  - `edit` - Modify role settings
+  - `assign` - Assign role to user
+  - `list` - View available roles
+  - `sync` - Synchronize with Discord roles
+
+- `/stats` - System statistics and metrics
+  - View performance metrics and system statistics
+
+- `/settings` - Server configuration
+  - Configure server-wide settings and preferences
+
+- `/tasks` - Task management
+  - `create` - Create a new task
+  - `edit` - Modify task details
+  - `delete` - Remove a task
+  - `assign` - Assign task to user
+  - `complete` - Mark task as completed
+  - `list` - View tasks
+
+- `/usersettings` - User preferences
+  - `view` - View current settings
+  - `notifications` - Configure notification preferences
+
+- `/test` - Testing utilities
+  - `notification` - Test notification system
+  - `system` - System utilities (includes ping)
+
+### Command Structure
+
+All commands follow a standardized structure:
+```
+commands/
+└── commandName/
+    ├── index.ts         # Command registration
+    ├── types.ts         # Type definitions
+    ├── utils.ts         # Shared utilities
+    └── handlers/        # Command handlers
+        ├── index.ts     # Handler exports
+        └── ...Handler.ts # Individual handlers
+```
+
 ## Permission System
 
 The bot uses role-based access control with three default roles:

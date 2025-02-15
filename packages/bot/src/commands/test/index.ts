@@ -74,6 +74,16 @@ export const test: Command = {
                                 .setRequired(true)
                         )
                 )
+        )
+        .addSubcommandGroup(group =>
+            group
+                .setName('system')
+                .setDescription('Test system functions')
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('ping')
+                        .setDescription('Test bot response time')
+                )
         ),
 
     async execute(interaction) {

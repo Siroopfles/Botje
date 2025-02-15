@@ -6,7 +6,7 @@ export interface TestCommandHandler {
 
 export interface TestHandlers {
     notification: TestCommandHandler;
-    ping: TestCommandHandler;
+    system: TestCommandHandler;
     // Add more test handlers here as needed
 }
 

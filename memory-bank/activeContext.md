@@ -1,47 +1,71 @@
-# Active Context
+# Active Development Context
 
-## Current Development
-- Permission system monitoring and optimization
-- Role management improvements:
-  - Two-way Discord sync
-  - Assignment syncing
-  - State consistency
-  - Performance tuning
+## Current Focus
+- Test Framework Implementation
+- Command System Improvements
+- Documentation Updates
 
-## Recent Changes
-- Enhanced role sync command
-- Added assignment syncing
-- Improved role initialization
-- Fixed duplicate role issues
-- Added state monitoring
+## Recent Changes (2025-02-15)
 
-## Active Decisions
-1. **Architecture**
-   - Event-driven role synchronization
-   - Automatic state reconciliation
-   - Performance monitoring system
-   - Cache invalidation strategy
+### Command System
+1. Command Structure Improvements
+   - Standardized command module structure
+   - Moved ping functionality to /test system subcommand
+   - Added SystemHandler for test utilities
+   - Added proper deferReply handling
+   - Updated handler types and interfaces
 
-2. **Role Management**
-   - Two-way sync with Discord
-   - Built-in role hierarchy
-   - State consistency checks
-   - Automatic cleanup
+2. Test Framework Setup
+   - Implemented Jest configuration for ES modules
+   - Created test setup with Discord.js mocks
+   - Added first command tests for /test system
+   - Fixed timestamp handling in tests
 
-## Current Challenges
-- Fine-tuning sync performance
-- Optimizing cache behavior
-- Improving state consistency
-- Enhancing error recovery
+3. Documentation Updates
+   - Updated README.md with new command structure
+   - Added command usage documentation
+   - Documented test system implementation
+
+## Active Commands
+- /roles - Role management and sync
+- /stats - System statistics and metrics
+- /settings - Server configuration
+- /test 
+  - notification - Notification testing
+  - system - System utilities (ping)
+- /tasks - Task management
+- /usersettings - User preferences
+
+## Current Issues
+1. Test Coverage
+   - Continue implementing tests for other commands
+   - Add integration tests
+   - Set up test utilities for common operations
+
+2. Build Process
+   - Monitor build performance
+   - Validate package build order
+   - Check ESM compatibility
 
 ## Next Actions
-1. Complete role state monitoring
-2. Optimize sync performance
-3. Implement role templates
-4. Deploy analytics system
+1. Implement Tests
+   - Add tests for remaining commands
+   - Create shared test utilities
+   - Add integration tests
+
+2. Documentation
+   - Document test patterns
+   - Update command documentation
+   - Add inline code comments
+
+## Key Files
+- tests/setup.ts - Test configuration and mocks
+- tests/commands/test/handlers/systemHandler.test.ts - First command tests
+- README.md - Updated command documentation
+- commandHandler.ts - Improved command handling
 
 ## Notes
-- Monitor sync stability
-- Track cache performance
-- Review error patterns
-- Document edge cases
+- Maintain consistent test patterns
+- Use proper command structure
+- Follow established mocking patterns
+- Ensure comprehensive test coverage
