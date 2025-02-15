@@ -1,8 +1,10 @@
 import { NotificationHandler } from './notificationHandler.js';
+import { PingHandler } from './pingHandler.js';
 import { TestHandlers } from '../types.js';
 
 const handlers: TestHandlers = {
-    notification: new NotificationHandler()
+    notification: new NotificationHandler(),
+    ping: new PingHandler()
     // Add more test handlers here as needed
 };
 

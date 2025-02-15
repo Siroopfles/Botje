@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import * as commands from './commands/index.js';
-import { commandHandler } from './utils/commandHandler.js';
+import { setupCommandHandler } from './utils/commandHandler.js';
 import { roleEvents } from './events/roleEvents.js';
 import { connect } from 'database';
 import dotenv from 'dotenv';
@@ -99,10 +99,13 @@ async function startBot() {
         await deployCommands(process.env.GUILD_ID); // Use GUILD_ID if set, otherwise deploy globally
         console.log('Slash commands deployed successfully');
 
-        // Initialize command handling
-        commandHandler.registerCommands(commands);
-        commandHandler.setupEvents(client);
+        // Log available commands
+        console.log('Available commands:', Object.keys(commands));
 
+        // Initialize command handling
+        console.log('Setting up command handler...');
+        setupCommandHandler(client);
+        
         // Set up role event handling
         console.log('Setting up role event handlers...');
         Object.entries(roleEvents).forEach(([event, handler]) => {
@@ -116,6 +119,7 @@ async function startBot() {
         // Bot ready event
         client.once(Events.ClientReady, c => {
             console.log(`Ready! Logged in as ${c.user.tag}`);
+            console.log('Registered commands:', Object.keys(commands));
         });
 
         // Error handling

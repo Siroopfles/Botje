@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, GuildMember, Collection, Role as DiscordRole, GuildMemberManager } from 'discord.js';
 import { Permission } from 'shared';
 import { RoleDocument, createRoleRepository, createUserRoleRepository } from 'database';
-import { startRoleInitialization, finishRoleInitialization } from '../../../../events/roleEvents.js';
+import { startRoleInitialization, finishRoleInitialization } from '../../../events/roleEvents.js';
 import { RoleCommandHandler, SyncResult } from '../types.js';
 import { formatRoleMessage } from '../utils.js';
 

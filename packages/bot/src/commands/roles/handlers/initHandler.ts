@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { createDefaultRoles } from 'shared';
 import { createRoleRepository, createUserRoleRepository } from 'database';
-import { startRoleInitialization, finishRoleInitialization } from '../../../../events/roleEvents.js';
+import { startRoleInitialization, finishRoleInitialization } from '../../../events/roleEvents.js';
 import { RoleCommandHandler } from '../types.js';
 import { createDiscordRole } from '../utils.js';
 

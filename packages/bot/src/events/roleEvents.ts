@@ -10,11 +10,18 @@ const userRoleRepo = createUserRoleRepository();
 const initializingServers = new Set<string>();
 
 export function startRoleInitialization(serverId: string): void {
+    if (initializingServers.has(serverId)) {
+        throw new Error('Role initialization already in progress');
+    }
     initializingServers.add(serverId);
 }
 
 export function finishRoleInitialization(serverId: string): void {
     initializingServers.delete(serverId);
+}
+
+export function isRoleInitializationInProgress(serverId: string): boolean {
+    return initializingServers.has(serverId);
 }
 
 /**

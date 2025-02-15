@@ -61,31 +61,87 @@ graph TD
   - Data validation
   - Transaction management
 
-## Design Patterns
+## Command System Pattern
 
-### 1. Command Pattern
-- Used for Discord bot commands
-- Enables easy addition of new commands
-- Maintains consistent command structure
-- Facilitates command validation
+### Structure Overview
+```
+commands/
+└── commandName/
+    ├── index.ts         # Command registration and execution
+    ├── types.ts         # Command-specific types
+    ├── utils.ts         # Shared utilities
+    └── handlers/        # Command handlers
+        ├── index.ts     # Handler registration
+        └── ...Handler.ts # Individual handlers
+```
 
-### 2. Observer Pattern
-- Implements real-time notifications
-- Handles task status updates
-- Manages event broadcasting
-- Enables webhook integrations
+### Key Components
 
-### 3. Factory Pattern
-- Creates task instances
-- Manages template generation
-- Handles notification creation
-- Standardizes object creation
+1. **index.ts**
+```typescript
+export const commandName: Command = {
+    data: new SlashCommandBuilder()
+        .setName('commandName')
+        .setDescription('Command description')
+        .addSubcommand(...),
+    
+    async execute(interaction) {
+        await interaction.deferReply();
+        const subcommand = interaction.options.getSubcommand();
+        const handler = handlers[subcommand];
+        await handler.execute(interaction);
+    }
+};
+```
 
-### 4. Repository Pattern
-- Abstracts database operations
-- Provides type-safe queries
-- Centralizes data access logic
-- Enables easier testing
+2. **types.ts**
+```typescript
+export interface CommandHandler {
+    execute(interaction: ChatInputCommandInteraction): Promise<void>;
+}
+
+export interface Handlers {
+    [subcommand: string]: CommandHandler;
+}
+```
+
+3. **utils.ts**
+```typescript
+export function formatError(error: Error): string {
+    return `❌ Error: ${error.message}`;
+}
+
+export function formatSuccess(message: string): string {
+    return `✅ ${message}`;
+}
+```
+
+### Best Practices
+
+1. **Error Handling**
+   - Use try-catch in command execution
+   - Format errors consistently
+   - Provide user-friendly error messages
+
+2. **Type Safety**
+   - Define interfaces for all data structures
+   - Use typed handlers for each subcommand
+   - Leverage TypeScript's type system
+
+3. **Command Registration**
+   - Export commands as named exports
+   - Use consistent command structure
+   - Validate command registration
+
+4. **Handler Pattern**
+   - One handler class per subcommand
+   - Implement common handler interface
+   - Centralize handler registration
+
+5. **Utilities**
+   - Share common functionality in utils
+   - Use consistent formatting
+   - Keep utilities command-specific
 
 ## Data Flow
 

@@ -49,21 +49,41 @@ function validateEnv(): {
 }
 
 const env = validateEnv();
-
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
 
 function isCommand(value: any): value is Command {
-    return value && 'data' in value && 'execute' in value;
+    if (!value || typeof value !== 'object') {
+        console.log('Not a command: Not an object');
+        return false;
+    }
+    if (!('data' in value)) {
+        console.log('Not a command: Missing data property');
+        return false;
+    }
+    if (!('execute' in value)) {
+        console.log('Not a command: Missing execute property');
+        return false;
+    }
+    console.log('Valid command object found');
+    return true;
 }
 
 function isSlashCommand(data: any): data is SlashCommandBuilder {
-    return data && typeof data.toJSON === 'function';
+    if (!data || typeof data !== 'object') {
+        console.log('Not a slash command: Not an object');
+        return false;
+    }
+    if (typeof data.toJSON !== 'function') {
+        console.log('Not a slash command: Missing toJSON function');
+        return false;
+    }
+    console.log('Valid slash command data found');
+    return true;
 }
 
 export async function deployCommands(guildId?: string) {
     try {
         console.log('Initializing database connection...');
-        // Ensure database connection
         await connect({
             uri: env.MONGODB_URI,
             dbName: env.MONGODB_DB_NAME
@@ -72,25 +92,46 @@ export async function deployCommands(guildId?: string) {
 
         const commandsData: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 
-        // Collect all command data
         console.log('Collecting command data...');
-        for (const module of Object.values(commands)) {
-            for (const exportedItem of Object.values(module)) {
-                if (isCommand(exportedItem) && isSlashCommand(exportedItem.data)) {
-                    commandsData.push(exportedItem.data.toJSON());
-                }
+        console.log('Commands module:', commands);
+        console.log('Available commands:', Object.keys(commands));
+
+        for (const [name, command] of Object.entries(commands)) {
+            console.log(`\nProcessing command: ${name}`);
+            console.log('Command object:', command);
+
+            if (!isCommand(command)) {
+                console.log(`Skipping ${name}: Not a valid command`);
+                continue;
             }
+
+            if (!isSlashCommand(command.data)) {
+                console.log(`Skipping ${name}: Not a valid slash command`);
+                continue;
+            }
+
+            console.log(`Converting command ${name} to JSON`);
+            const jsonData = command.data.toJSON();
+            console.log('JSON data:', jsonData);
+            commandsData.push(jsonData);
         }
 
         const route = guildId 
             ? Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID, guildId)
             : Routes.applicationCommands(env.DISCORD_CLIENT_ID);
 
-        console.log(`Started refreshing ${commandsData.length} application (/) commands.`);
+        console.log(`\nStarted refreshing ${commandsData.length} application (/) commands.`);
+        if (commandsData.length > 0) {
+            console.log('Commands to deploy:', commandsData.map(cmd => cmd.name).join(', '));
+        } else {
+            console.log('No commands to deploy!');
+            console.log('Command data:', commandsData);
+        }
         console.log(guildId ? `Deploying to guild: ${guildId}` : 'Deploying globally');
 
         // Deploy commands
         const data = await rest.put(route, { body: commandsData });
+        console.log('Deployment response:', data);
 
         console.log(`Successfully reloaded application (/) commands.`);
         return data;

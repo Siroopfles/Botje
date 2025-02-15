@@ -1,123 +1,93 @@
 import { 
-    ChatInputCommandInteraction,
-    Collection,
-    Events,
-    Interaction,
-    Client
+    ChatInputCommandInteraction, 
+    Client, 
+    Collection, 
+    SlashCommandBuilder 
 } from 'discord.js';
 import { Command } from '../types/command.js';
-import { connect } from 'database';
-import { checkPermissions } from '../middleware/permissionMiddleware.js';
+import * as commands from '../commands/index.js';
 
-class CommandHandler {
+class CommandManager {
     private commands: Collection<string, Command>;
 
     constructor() {
         this.commands = new Collection();
+        this.loadCommands();
     }
 
-    /**
-     * Register commands for use
-     */
-    public registerCommands(commands: { [key: string]: any }): void {
-        for (const module of Object.values(commands)) {
-            for (const exportedItem of Object.values(module)) {
-                if (this.isCommand(exportedItem)) {
-                    this.commands.set(exportedItem.data.name, exportedItem);
-                }
-            }
-        }
-    }
+    private loadCommands(): void {
+        console.log('Loading commands...');
+        console.log('Available commands:', Object.keys(commands));
 
-    /**
-     * Handle incoming interactions
-     */
-    public async handleInteraction(interaction: Interaction): Promise<void> {
-        if (!interaction.isChatInputCommand()) return;
-
-        try {
-            // Ensure database connection
-            if (!process.env.MONGODB_URI || !process.env.MONGODB_DB_NAME) {
-                throw new Error('Database configuration missing');
+        // Load each command from the commands module
+        for (const [name, command] of Object.entries(commands)) {
+            console.log(`Processing command: ${name}`);
+            
+            if (!command || typeof command !== 'object') {
+                console.log(`Skipping ${name}: Invalid command object`);
+                continue;
             }
 
-            await connect({
-                uri: process.env.MONGODB_URI,
-                dbName: process.env.MONGODB_DB_NAME
-            });
+            if (!('data' in command) || !('execute' in command)) {
+                console.log(`Skipping ${name}: Missing data or execute`);
+                continue;
+            }
 
-            await this.executeCommand(interaction);
+            if (!(command.data instanceof SlashCommandBuilder)) {
+                console.log(`Skipping ${name}: Invalid command data`);
+                continue;
+            }
 
-        } catch (error) {
-            console.error('Error handling command:', error);
-            await this.handleError(interaction, error);
+            console.log(`Registering command: ${name} (${command.data.name})`);
+            this.commands.set(command.data.name, command);
         }
+
+        console.log('Loaded commands:', Array.from(this.commands.keys()));
     }
 
-    /**
-     * Execute a command with permission check
-     */
-    private async executeCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-        const command = this.commands.get(interaction.commandName);
+    public async handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+        const { commandName } = interaction;
+        const command = this.commands.get(commandName);
+
         if (!command) {
-            console.error(`No command matching ${interaction.commandName} was found.`);
+            console.error(`Command not found: ${commandName}`);
+            await interaction.reply({ 
+                content: 'This command is not currently available.', 
+                ephemeral: true 
+            });
             return;
         }
 
         try {
-            // Check permissions before executing
-            const hasPermission = await checkPermissions(interaction);
-            if (!hasPermission) {
-                return;
-            }
-
-            // Execute command
             await command.execute(interaction);
-
         } catch (error) {
-            await this.handleError(interaction, error);
+            console.error(`Error executing command ${commandName}:`, error);
+            const reply = {
+                content: 'There was an error while executing this command!',
+                ephemeral: true
+            };
+
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply(reply);
+            } else {
+                await interaction.reply(reply);
+            }
         }
     }
 
-    /**
-     * Handle command errors
-     */
-    private async handleError(interaction: ChatInputCommandInteraction, error: unknown): Promise<void> {
-        console.error('Command execution error:', error);
-
-        const errorMessage = {
-            content: 'There was an error executing this command!',
-            ephemeral: true
-        };
-
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(errorMessage);
-        } else {
-            await interaction.reply(errorMessage);
-        }
-    }
-
-    /**
-     * Type guard for commands
-     */
-    private isCommand(value: any): value is Command {
-        return value && 'data' in value && 'execute' in value;
-    }
-
-    /**
-     * Get registered commands
-     */
     public getCommands(): Collection<string, Command> {
         return this.commands;
     }
-
-    /**
-     * Set up event handling
-     */
-    public setupEvents(client: Client): void {
-        client.on(Events.InteractionCreate, (interaction: Interaction) => this.handleInteraction(interaction));
-    }
 }
 
-// Create and export singleton instance
-export const commandHandler = new CommandHandler();
+export function setupCommandHandler(client: Client) {
+    console.log('Setting up command handler...');
+    const manager = new CommandManager();
+
+    client.on('interactionCreate', async interaction => {
+        if (!interaction.isChatInputCommand()) return;
+        await manager.handleCommand(interaction);
+    });
+
+    return manager;
+}
