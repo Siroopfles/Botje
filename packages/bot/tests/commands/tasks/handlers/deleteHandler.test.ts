@@ -1,227 +1,177 @@
-// Create repository mocks first, before any jest.mock calls
-const mockTaskRepo = {
-  create: jest.fn(),
-  findById: jest.fn(),
-  findByServerId: jest.fn(),
-  findByAssignee: jest.fn(),
-  findByStatusAndServer: jest.fn(),
-  findOverdueTasks: jest.fn(),
-  findUpcomingTasks: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn()
-} as jest.Mocked<TaskRepository>;
-
-// Then the jest.mock calls
-jest.mock('database', () => ({
-  createTaskRepository: () => mockTaskRepo
-}));
-jest.mock('../../../../src/commands/test/utils.js');
-
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { ChatInputCommandInteraction, User } from 'discord.js';
 import { DeleteHandler } from '../../../../src/commands/tasks/handlers/deleteHandler.js';
-import { mockInteraction, mocks } from '../../../setup.js';
-import { TaskRepository, TaskDocument } from 'database';
+import { setup, TestContext } from '../../../setup.js';
+import { mockTaskRepo } from '../../../mocks/database.js';
 import { TaskStatus } from 'shared';
+import { TaskDocument } from 'database';
 
 describe('DeleteHandler', () => {
   const handler = new DeleteHandler();
+  let ctx: TestContext;
   
-  const mockUser = {
-    id: '123456789',
-    toString: () => '<@123456789>',
-    valueOf: () => '123456789',
-    username: 'TestUser',
-    discriminator: '0000',
-    bot: false,
-    system: false,
-  } as unknown as User;
-
-  const guildId = '987654321';
   const taskId = '1';
-
-  const mockTask: Partial<TaskDocument> = {
-    id: taskId,
-    title: 'Test Task',
-    description: 'Test Description',
-    status: TaskStatus.PENDING,
-    assigneeId: mockUser.id,
-    serverId: guildId,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
+  let mockTask: TaskDocument;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
-    // Setup interaction mocks
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: guildId,
-      configurable: true
-    });
-
-    mocks.functions.getUser.mockReturnValue(mockUser);
-    mocks.functions.getString.mockReturnValue(null);
+    ctx = setup();
+    mockTask = {
+      id: taskId,
+      title: 'Test Task',
+      description: 'Test Description',
+      status: TaskStatus.PENDING,
+      assigneeId: ctx.user.id,
+      serverId: ctx.guild.id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      save: jest.fn()
+    } as unknown as TaskDocument;
   });
 
   it('should handle guild-only restriction', async () => {
     // Arrange
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: null,
-      configurable: true
-    });
+    ctx.command.guildId = null;
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ This command can only be used in a server'
     });
   });
 
   it('should handle missing task ID', async () => {
     // Arrange
-    mocks.functions.getString.mockReturnValue(null);
+    ctx.options.getString.mockReturnValue(null);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Task ID is required'
     });
   });
 
   it('should handle non-existent task', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
+    ctx.options.getString.mockReturnValue(taskId);
     mockTaskRepo.findById.mockResolvedValue(null);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
     expect(mockTaskRepo.findById).toHaveBeenCalledWith(taskId);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Task not found'
     });
   });
 
   it('should handle task from different server', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
+    ctx.options.getString.mockReturnValue(taskId);
     const differentServerTask = {
       ...mockTask,
-      serverId: 'different-server'
-    };
-    mockTaskRepo.findById.mockResolvedValue(differentServerTask as TaskDocument);
+      serverId: 'different-server',
+      save: jest.fn()
+    } as unknown as TaskDocument;
+    mockTaskRepo.findById.mockResolvedValue(differentServerTask);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Task belongs to a different server'
     });
   });
 
   it('should delete task successfully', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
-    mockTaskRepo.findById.mockResolvedValue(mockTask as TaskDocument);
+    ctx.options.getString.mockReturnValue(taskId);
+    mockTaskRepo.findById.mockResolvedValue(mockTask);
     mockTaskRepo.delete.mockResolvedValue(true);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
     expect(mockTaskRepo.delete).toHaveBeenCalledWith(taskId);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: `✅ Deleted task "${mockTask.title}" (ID: ${taskId})`
     });
   });
 
   it('should handle database errors when finding task', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
+    ctx.options.getString.mockReturnValue(taskId);
     mockTaskRepo.findById.mockRejectedValue(new Error('Database error'));
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Failed to find task: Database error'
     });
   });
 
   it('should handle database errors when deleting task', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
-    mockTaskRepo.findById.mockResolvedValue(mockTask as TaskDocument);
+    ctx.options.getString.mockReturnValue(taskId);
+    mockTaskRepo.findById.mockResolvedValue(mockTask);
     mockTaskRepo.delete.mockRejectedValue(new Error('Database error'));
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Failed to delete task: Database error'
     });
   });
 
   it('should handle completed tasks', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
+    ctx.options.getString.mockReturnValue(taskId);
     const completedTask = {
       ...mockTask,
       status: TaskStatus.COMPLETED,
-      completedDate: new Date()
-    };
-    mockTaskRepo.findById.mockResolvedValue(completedTask as TaskDocument);
+      completedDate: new Date(),
+      completedBy: ctx.user.id,
+      save: jest.fn()
+    } as unknown as TaskDocument;
+    mockTaskRepo.findById.mockResolvedValue(completedTask);
     mockTaskRepo.delete.mockResolvedValue(true);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
     expect(mockTaskRepo.delete).toHaveBeenCalledWith(taskId);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: `✅ Deleted task "${mockTask.title}" (ID: ${taskId})`
     });
   });
 
   it('should handle tasks with dependencies', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(taskId);
-
+    ctx.options.getString.mockReturnValue(taskId);
     const taskWithDependencies = {
       ...mockTask,
-      dependentTasks: ['2', '3']
-    };
-    mockTaskRepo.findById.mockResolvedValue(taskWithDependencies as TaskDocument);
+      dependentTasks: ['2', '3'],
+      save: jest.fn()
+    } as unknown as TaskDocument;
+    mockTaskRepo.findById.mockResolvedValue(taskWithDependencies);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(mockTaskRepo.delete).not.toHaveBeenCalled();
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Cannot delete task with dependencies'
     });
-    expect(mockTaskRepo.delete).not.toHaveBeenCalled();
   });
 });

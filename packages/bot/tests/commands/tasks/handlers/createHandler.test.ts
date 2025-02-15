@@ -1,141 +1,175 @@
-// Create repository mocks first, before any jest.mock calls
-const mockTaskRepo = {
-  create: jest.fn(),
-  findById: jest.fn(),
-  findByServerId: jest.fn(),
-  findByAssignee: jest.fn(),
-  findByStatusAndServer: jest.fn(),
-  findOverdueTasks: jest.fn(),
-  findUpcomingTasks: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn()
-} as jest.Mocked<TaskRepository>;
-
-// Then the jest.mock calls
-jest.mock('database', () => ({
-  createTaskRepository: () => mockTaskRepo
-}));
-jest.mock('../../../../src/commands/test/utils.js');
-
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { ChatInputCommandInteraction, User } from 'discord.js';
 import { CreateHandler } from '../../../../src/commands/tasks/handlers/createHandler.js';
-import { mockInteraction, mocks } from '../../../setup.js';
-import { TaskRepository, TaskDocument } from 'database';
+import { setup, TestContext } from '../../../setup.js';
+import { mockTaskRepo } from '../../../mocks/database.js';
 import { TaskStatus } from 'shared';
+import { TaskDocument } from 'database';
 
 describe('CreateHandler', () => {
   const handler = new CreateHandler();
-  
-  const mockUser = {
-    id: '123456789',
-    toString: () => '<@123456789>',
-    valueOf: () => '123456789',
-    username: 'TestUser',
-    discriminator: '0000',
-    bot: false,
-    system: false,
-  } as unknown as User;
+  let ctx: TestContext;
 
-  const guildId = '987654321';
-  const title = 'Test Task';
-  const description = 'Test Description';
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 1); // Due tomorrow
+  const createMockTask = (
+    id: string,
+    title: string,
+    description: string
+  ): TaskDocument => ({
+    id,
+    title,
+    description,
+    status: TaskStatus.PENDING,
+    assigneeId: ctx.user.id,
+    serverId: ctx.guild.id,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    save: jest.fn()
+  } as unknown as TaskDocument);
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
-    // Setup interaction mocks
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: guildId,
-      configurable: true
-    });
-
-    mocks.functions.getUser.mockReturnValue(mockUser);
-    mocks.functions.getString.mockReturnValue(null);
+    ctx = setup();
   });
 
   it('should handle guild-only restriction', async () => {
     // Arrange
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: null,
-      configurable: true
-    });
+    ctx.command.guildId = null;
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ This command can only be used in a server'
     });
   });
 
-  it('should create a task with required fields', async () => {
+  it('should handle missing required fields', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
+    ctx.options.getString.mockReturnValue(null);
+
+    // Act
+    await handler.execute(ctx.command);
+
+    // Assert
+    expect(mockTaskRepo.create).not.toHaveBeenCalled();
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: '❌ Title and description are required'
+    });
+  });
+
+  it('should handle missing description', async () => {
+    // Arrange
+    ctx.options.getString
+      .mockReturnValueOnce('Test Title')
+      .mockReturnValue(null);
+
+    // Act
+    await handler.execute(ctx.command);
+
+    // Assert
+    expect(mockTaskRepo.create).not.toHaveBeenCalled();
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: '❌ Title and description are required'
+    });
+  });
+
+  it('should create task with required fields', async () => {
+    // Arrange
+    const title = 'Test Task';
+    const description = 'Test Description';
+    
+    ctx.options.getString
       .mockReturnValueOnce(title)
       .mockReturnValueOnce(description)
       .mockReturnValue(null);
 
-    const expectedTask = {
-      id: '1',
-      title,
-      description,
-      status: TaskStatus.PENDING,
-      assigneeId: mockUser.id,
-      serverId: guildId,
-      createdAt: expect.any(Date),
-      updatedAt: expect.any(Date),
-      save: jest.fn()
-    } as unknown as TaskDocument;
-
-    mockTaskRepo.create.mockResolvedValue(expectedTask);
+    const mockTask = createMockTask('1', title, description);
+    mockTaskRepo.create.mockResolvedValue(mockTask);
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
     expect(mockTaskRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       title,
       description,
       status: TaskStatus.PENDING,
-      assigneeId: mockUser.id,
-      serverId: guildId
+      assigneeId: ctx.user.id,
+      serverId: ctx.guild.id
     }));
 
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
-      content: `✅ Created task "${title}" [ID: ${expectedTask.id}]`
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: `✅ Created task "${title}" [ID: ${mockTask.id}]`
     });
   });
 
-  it('should handle missing required fields', async () => {
+  it('should handle optional due date', async () => {
+    // Arrange
+    const title = 'Test Task';
+    const description = 'Test Description';
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1); // Due tomorrow
+    
+    ctx.options.getString
+      .mockReturnValueOnce(title)
+      .mockReturnValueOnce(description);
+    ctx.options.getInteger.mockReturnValue(dueDate.getTime());
+
+    const mockTask = {
+      ...createMockTask('1', title, description),
+      dueDate
+    } as unknown as TaskDocument;
+    mockTaskRepo.create.mockResolvedValue(mockTask);
+
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockTaskRepo.create).not.toHaveBeenCalled();
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
-      content: '❌ Title and description are required'
-    });
+    expect(mockTaskRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      title,
+      description,
+      dueDate
+    }));
   });
 
   it('should handle database errors', async () => {
     // Arrange
-    jest.spyOn(mocks.functions, 'getString')
-      .mockReturnValueOnce(title)
-      .mockReturnValueOnce(description)
-      .mockReturnValue(null);
+    const title = 'Test Task';
+    const description = 'Test Description';
     
+    ctx.options.getString
+      .mockReturnValueOnce(title)
+      .mockReturnValueOnce(description);
+
     mockTaskRepo.create.mockRejectedValue(new Error('Database error'));
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith({
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
       content: '❌ Failed to create task: Database error'
+    });
+  });
+
+  it('should handle invalid due date', async () => {
+    // Arrange
+    const title = 'Test Task';
+    const description = 'Test Description';
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 1); // Yesterday
+    
+    ctx.options.getString
+      .mockReturnValueOnce(title)
+      .mockReturnValueOnce(description);
+    ctx.options.getInteger.mockReturnValue(pastDate.getTime());
+
+    // Act
+    await handler.execute(ctx.command);
+
+    // Assert
+    expect(mockTaskRepo.create).not.toHaveBeenCalled();
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: '❌ Due date must be in the future'
     });
   });
 });

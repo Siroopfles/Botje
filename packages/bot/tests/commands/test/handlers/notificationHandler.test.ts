@@ -1,287 +1,171 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { ChatInputCommandInteraction, User } from 'discord.js';
-import { NotificationService, TaskStatus } from 'shared';
-import type { NotificationPreferencesRepository, TaskRepository, NotificationPreferencesDocument, TaskDocument } from 'database';
-import type { TestTaskData } from '../../../../src/commands/test/types.js';
-
-// Create repository mocks first
-const repositories = {
-  notificationPreferences: {
-    findByUserId: jest.fn(),
-    create: jest.fn(),
-    findByServerId: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn()
-  } as jest.Mocked<NotificationPreferencesRepository>,
-  task: {
-    create: jest.fn(),
-    update: jest.fn(),
-    findById: jest.fn(),
-    findByServerId: jest.fn(),
-    findByAssignee: jest.fn(),
-    findByStatusAndServer: jest.fn(),
-    findOverdueTasks: jest.fn(),
-    findUpcomingTasks: jest.fn(),
-    delete: jest.fn()
-  } as jest.Mocked<TaskRepository>
-};
-
-// Create mock functions
-const mockCreateTestTask: jest.Mock = jest.fn();
-const mockCreateTestTasks: jest.Mock = jest.fn();
-
-// Setup mock modules
-jest.mock('database', () => ({
-  createNotificationPreferencesRepository: () => repositories.notificationPreferences,
-  createTaskRepository: () => repositories.task
-}));
-
-jest.mock('../../../../src/commands/test/utils.js', () => ({
-  createTestTask: (...args: any[]) => mockCreateTestTask(...args),
-  createTestTasks: (...args: any[]) => mockCreateTestTasks(...args),
-  calculateDueDate: (minutes?: number) => new Date(Date.now() + (minutes || 0) * 60000),
-  formatSuccess: (msg: string) => `✅ ${msg}`,
-  formatError: (error: Error) => `❌ ${error.message}`
-}));
-
-// Import after mock setup
 import { NotificationHandler } from '../../../../src/commands/test/handlers/notificationHandler.js';
-import { mockInteraction, mocks } from '../../../setup.js';
+import { setup, TestContext } from '../../../setup.js';
+import { InteractionEditReplyOptions } from 'discord.js';
 
 describe('NotificationHandler', () => {
   const handler = new NotificationHandler();
-  
-  // Create user mock with required properties
-  const mockUser: Partial<User> = {
-    id: '123456789',
-    toString: () => `<@123456789>`,
-    valueOf: () => '123456789',
-    username: 'TestUser',
-    discriminator: '0000',
-    bot: false,
-    system: false,
-  };
-  
-  const guildId = '987654321';
-
-  // Create mock documents
-  const mockTaskDoc: Partial<TaskDocument> = {
-    id: '1',
-    title: 'Test Task',
-    description: 'Test Description',
-    status: TaskStatus.PENDING,
-    assigneeId: mockUser.id,
-    serverId: guildId,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-
-  const mockPreferencesDoc: Partial<NotificationPreferencesDocument> = {
-    id: '1',
-    userId: mockUser.id,
-    serverId: guildId,
-    discordDm: true,
-    reminderHours: 24,
-    dailyDigest: true,
-    digestTime: '09:00',
-    notifyOnAssignment: true,
-    notifyOnCompletion: true,
-    notifyOnDue: true,
-    notifyOnOverdue: true,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
+  let ctx: TestContext;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
-    // Setup interaction mocks
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: guildId,
-      configurable: true
-    });
-
-    // Setup mock function returns
-    mocks.functions.getUser.mockReturnValue(mockUser as User);
-    mocks.functions.getInteger.mockReturnValue(null);
-    mocks.functions.getSubcommand.mockReturnValue('assignment');
-
-    // Setup test task creation mocks
-    mockCreateTestTask.mockImplementation((data: any) => Promise.resolve({
-      ...mockTaskDoc,
-      ...data
-    }));
-
-    mockCreateTestTasks.mockImplementation((...args: unknown[]) => {
-      const [tasks] = args as [TestTaskData[]];
-      return Promise.resolve(
-        tasks.map((task, index) => ({
-          ...mockTaskDoc,
-          id: String(index + 1),
-          ...task
-        }))
-      );
-    });
-
-    // Setup database mocks
-    repositories.notificationPreferences.findByUserId.mockResolvedValue(mockPreferencesDoc as NotificationPreferencesDocument);
-    repositories.notificationPreferences.create.mockResolvedValue(mockPreferencesDoc as NotificationPreferencesDocument);
-    repositories.task.create.mockResolvedValue(mockTaskDoc as TaskDocument);
-    repositories.task.update.mockResolvedValue(mockTaskDoc as TaskDocument);
-
-    // Setup NotificationService mock
-    jest.spyOn(NotificationService, 'createDefaultPreferences')
-      .mockReturnValue(mockPreferencesDoc as NotificationPreferencesDocument);
+    ctx = setup();
   });
 
-  it('should handle guild-only restriction', async () => {
-    // Arrange
-    Object.defineProperty(mockInteraction, 'guildId', {
-      value: null,
-      configurable: true
+  const getReplyContent = (call: jest.Mock): string => {
+    const reply = call.mock.calls[0][0] as InteractionEditReplyOptions;
+    return reply.content as string;
+  };
+
+  describe('send subcommand', () => {
+    beforeEach(() => {
+      ctx.options.getSubcommand.mockReturnValue('send');
     });
+
+    it('should handle sending test notification', async () => {
+      // Arrange
+      const testUser = {
+        ...ctx.user,
+        id: '999888777',
+        toString: () => '<@999888777>'
+      };
+
+      ctx.options.getUser.mockReturnValue(testUser);
+      ctx.options.getString.mockReturnValue('Test notification message');
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('✅ Test notification sent to')
+      });
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining(testUser.toString())
+      });
+    });
+
+    it('should handle missing user', async () => {
+      // Arrange
+      ctx.options.getUser.mockReturnValue(null);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: '❌ User is required'
+      });
+    });
+
+    it('should handle missing message', async () => {
+      // Arrange
+      ctx.options.getUser.mockReturnValue(ctx.user);
+      ctx.options.getString.mockReturnValue(null);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: '❌ Message is required'
+      });
+    });
+  });
+
+  describe('message subcommand', () => {
+    beforeEach(() => {
+      ctx.options.getSubcommand.mockReturnValue('message');
+    });
+
+    it('should handle sending direct message', async () => {
+      // Arrange
+      const message = 'Test direct message';
+      ctx.options.getString.mockReturnValue(message);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('✅ Direct message sent')
+      });
+    });
+
+    it('should handle missing message', async () => {
+      // Arrange
+      ctx.options.getString.mockReturnValue(null);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: '❌ Message is required'
+      });
+    });
+  });
+
+  describe('channel subcommand', () => {
+    beforeEach(() => {
+      ctx.options.getSubcommand.mockReturnValue('channel');
+    });
+
+    it('should handle sending channel announcement', async () => {
+      // Arrange
+      const message = 'Test channel announcement';
+      ctx.options.getString.mockReturnValue(message);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('✅ Channel announcement sent')
+      });
+    });
+
+    it('should handle missing message', async () => {
+      // Arrange
+      ctx.options.getString.mockReturnValue(null);
+
+      // Act
+      await handler.execute(ctx.command);
+
+      // Assert
+      expect(ctx.methods.editReply).toHaveBeenCalledWith({
+        content: '❌ Message is required'
+      });
+    });
+  });
+
+  it('should handle invalid subcommand', async () => {
+    // Arrange
+    ctx.options.getSubcommand.mockReturnValue('invalid');
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(
-      'This command can only be used in a server.'
-    );
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: '❌ Invalid subcommand'
+    });
   });
 
-  it('should create preferences if they do not exist', async () => {
+  it('should handle error during message send', async () => {
     // Arrange
-    repositories.notificationPreferences.findByUserId.mockResolvedValue(null);
+    ctx.options.getSubcommand.mockReturnValue('send');
+    ctx.options.getUser.mockReturnValue(ctx.user);
+    ctx.options.getString.mockReturnValue('Test message');
+    
+    // Mock followUp to simulate error
+    ctx.methods.followUp.mockRejectedValue(new Error('Failed to send message'));
 
     // Act
-    await handler.execute(mockInteraction as ChatInputCommandInteraction);
+    await handler.execute(ctx.command);
 
     // Assert
-    expect(repositories.notificationPreferences.findByUserId).toHaveBeenCalledWith(mockUser.id, guildId);
-    expect(NotificationService.createDefaultPreferences).toHaveBeenCalledWith(mockUser.id, guildId);
-    expect(repositories.notificationPreferences.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: mockUser.id,
-        serverId: guildId
-      })
-    );
-  });
-
-  describe('notification types', () => {
-    it('should handle assignment notification', async () => {
-      // Arrange
-      mocks.functions.getSubcommand.mockReturnValue('assignment');
-      mocks.functions.getInteger.mockReturnValue(null);
-
-      // Act
-      await handler.execute(mockInteraction as ChatInputCommandInteraction);
-
-      // Assert
-      expect(mockCreateTestTask).toHaveBeenCalledWith({
-        title: 'Test Assignment Notification',
-        description: 'Testing assignment notification format',
-        serverId: guildId,
-        assigneeId: mockUser.id
-      });
-      expect(mockInteraction.editReply).toHaveBeenCalledWith(
-        expect.stringContaining('Created test task with ID: 1')
-      );
-    });
-
-    it('should handle due date notification', async () => {
-      // Arrange
-      mocks.functions.getSubcommand.mockReturnValue('due');
-      mocks.functions.getInteger.mockReturnValue(60); // 60 minutes
-
-      // Act
-      await handler.execute(mockInteraction as ChatInputCommandInteraction);
-
-      // Assert
-      expect(mockCreateTestTask).toHaveBeenCalledWith({
-        title: 'Test Due Date Notification',
-        description: 'Testing due date notification format',
-        serverId: guildId,
-        assigneeId: mockUser.id,
-        dueDate: expect.any(Date)
-      });
-    });
-
-    it('should handle overdue notification', async () => {
-      // Arrange
-      mocks.functions.getSubcommand.mockReturnValue('overdue');
-      mocks.functions.getInteger.mockReturnValue(null);
-
-      // Act
-      await handler.execute(mockInteraction as ChatInputCommandInteraction);
-
-      // Assert
-      expect(mockCreateTestTask).toHaveBeenCalledWith({
-        title: 'Test Overdue Notification',
-        description: 'Testing overdue notification format',
-        serverId: guildId,
-        assigneeId: mockUser.id,
-        dueDate: expect.any(Date)
-      });
-    });
-
-    it('should handle completion notification', async () => {
-      // Arrange
-      mocks.functions.getSubcommand.mockReturnValue('complete');
-      mocks.functions.getInteger.mockReturnValue(null);
-
-      // Act
-      await handler.execute(mockInteraction as ChatInputCommandInteraction);
-
-      // Assert
-      expect(mockCreateTestTask).toHaveBeenCalledWith({
-        title: 'Test Completion Notification',
-        description: 'Testing completion notification format',
-        serverId: guildId,
-        assigneeId: mockUser.id
-      });
-      expect(repositories.task.update).toHaveBeenCalledWith('1', {
-        status: TaskStatus.COMPLETED,
-        completedDate: expect.any(Date)
-      });
-    });
-
-    it('should handle daily digest notification', async () => {
-      // Arrange
-      mocks.functions.getSubcommand.mockReturnValue('daily');
-      mocks.functions.getInteger.mockReturnValue(null);
-
-      // Act
-      await handler.execute(mockInteraction as ChatInputCommandInteraction);
-
-      // Assert
-      expect(mockCreateTestTasks).toHaveBeenCalledWith([
-        {
-          title: 'Test Daily Digest Task 1',
-          description: 'A pending task',
-          serverId: guildId,
-          assigneeId: mockUser.id
-        },
-        {
-          title: 'Test Daily Digest Task 2',
-          description: 'An overdue task',
-          serverId: guildId,
-          assigneeId: mockUser.id,
-          dueDate: expect.any(Date)
-        }
-      ], 2);
-      
-      expect(mockCreateTestTask).toHaveBeenCalledWith({
-        title: 'Test Daily Digest Task 3',
-        description: 'A completed task',
-        serverId: guildId,
-        assigneeId: mockUser.id
-      });
-      
-      expect(repositories.task.update).toHaveBeenCalledWith('1', {
-        status: TaskStatus.COMPLETED,
-        completedDate: expect.any(Date)
-      });
+    expect(ctx.methods.editReply).toHaveBeenCalledWith({
+      content: expect.stringContaining('❌ Failed to send notification')
     });
   });
 });
