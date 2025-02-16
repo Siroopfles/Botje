@@ -1,0 +1,72 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Stats Command Registration command definition should match snapshot 1`] = `
+{
+  "default_member_permissions": "8",
+  "description": "View various statistics",
+  "dm_permission": false,
+  "name": "stats",
+  "options": [
+    {
+      "description": "Permission related statistics",
+      "name": "permissions",
+      "options": [
+        {
+          "description": "View permission statistics",
+          "name": "view",
+          "type": 1
+        },
+        {
+          "description": "Reset permission metrics",
+          "name": "reset",
+          "type": 1
+        }
+      ],
+      "type": 2
+    },
+    {
+      "description": "View task statistics",
+      "name": "tasks",
+      "options": [
+        {
+          "choices": [
+            {
+              "name": "Today",
+              "value": "day"
+            },
+            {
+              "name": "This Week",
+              "value": "week"
+            },
+            {
+              "name": "This Month",
+              "value": "month"
+            },
+            {
+              "name": "All Time",
+              "value": "all"
+            }
+          ],
+          "description": "Time period to view stats for",
+          "name": "period",
+          "required": false,
+          "type": 3
+        }
+      ],
+      "type": 1
+    },
+    {
+      "description": "View user activity statistics",
+      "name": "users",
+      "options": [
+        {
+          "description": "User to view stats for (defaults to yourself)",
+          "name": "target",
+          "required": false,
+          "type": 6
+        }
+      ],
+      "type": 1
+    }
+  ]
+}

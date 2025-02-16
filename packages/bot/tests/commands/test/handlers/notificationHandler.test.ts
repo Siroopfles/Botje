@@ -158,7 +158,7 @@ describe('NotificationHandler', () => {
     ctx.options.getString.mockReturnValue('Test message');
     
     // Mock followUp to simulate error
-    ctx.methods.followUp.mockRejectedValue(new Error('Failed to send message'));
+    ctx.methods.followUp.mockImplementation(() => Promise.reject(new Error('Failed to send message')));
 
     // Act
     await handler.execute(ctx.command);

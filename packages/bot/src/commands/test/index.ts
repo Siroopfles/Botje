@@ -1,111 +1,83 @@
-import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { Command } from '../../types/command.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import { handlers } from './handlers/index.js';
+import { CommandModule } from '../../commands/index.js';
 
-export const test: Command = {
-    data: new SlashCommandBuilder()
-        .setName('test')
-        .setDescription('Test various system components')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addSubcommandGroup(group =>
-            group
-                .setName('notification')
-                .setDescription('Test notification system')
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('assignment')
-                        .setDescription('Test task assignment notification')
-                        .addUserOption(option =>
-                            option
-                                .setName('assignee')
-                                .setDescription('User to assign task to')
-                                .setRequired(true)
-                        )
-                )
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('due')
-                        .setDescription('Test due date notification')
-                        .addUserOption(option =>
-                            option
-                                .setName('assignee')
-                                .setDescription('User to assign task to')
-                                .setRequired(true)
-                        )
-                        .addIntegerOption(option =>
-                            option
-                                .setName('minutes')
-                                .setDescription('Minutes until due')
-                                .setRequired(false)
-                                .setMinValue(1)
-                                .setMaxValue(60)
-                        )
-                )
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('overdue')
-                        .setDescription('Test overdue notification')
-                        .addUserOption(option =>
-                            option
-                                .setName('assignee')
-                                .setDescription('User to assign task to')
-                                .setRequired(true)
-                        )
-                )
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('complete')
-                        .setDescription('Test completion notification')
-                        .addUserOption(option =>
-                            option
-                                .setName('assignee')
-                                .setDescription('User to assign task to')
-                                .setRequired(true)
-                        )
-                )
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('daily')
-                        .setDescription('Test daily digest')
-                        .addUserOption(option =>
-                            option
-                                .setName('assignee')
-                                .setDescription('User to test digest for')
-                                .setRequired(true)
-                        )
-                )
-        )
-        .addSubcommandGroup(group =>
-            group
-                .setName('system')
-                .setDescription('Test system functions')
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('ping')
-                        .setDescription('Test bot response time')
-                )
-        ),
+// Create command builder
+const data = new SlashCommandBuilder()
+  .setName('test')
+  .setDescription('Test bot functionality')
+  .setDefaultMemberPermissions('Administrator')
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('ping')
+      .setDescription('Test bot latency')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('system')
+      .setDescription('View system information and stats')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('notification')
+      .setDescription('Test notification system')
+      .addStringOption(option =>
+        option
+          .setName('type')
+          .setDescription('Type of notification to test')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Direct Message', value: 'message' },
+            { name: 'Channel', value: 'channel' },
+            { name: 'User', value: 'send' }
+          )
+      )
+      .addUserOption(option =>
+        option
+          .setName('user')
+          .setDescription('User to send the test notification to')
+          .setRequired(false)
+      )
+      .addStringOption(option =>
+        option
+          .setName('message')
+          .setDescription('Test message content')
+          .setRequired(false)
+          .setMaxLength(1000)
+      )
+  );
 
-    async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
-        
-        try {
-            const group = interaction.options.getSubcommandGroup();
-            const handler = handlers[group as keyof typeof handlers];
-            
-            if (!handler) {
-                await interaction.editReply({
-                    content: '❌ Invalid command'
-                });
-                return;
-            }
+// Create command instance
+export const test: CommandModule = {
+  data,
+  execute: async (interaction: ChatInputCommandInteraction) => {
+    const subcommand = interaction.options.getSubcommand();
 
-            await handler.execute(interaction);
-        } catch (error) {
-            console.error('Error executing test command:', error);
-            await interaction.editReply({
-                content: '❌ An error occurred while processing the command'
-            });
-        }
+    switch (subcommand) {
+      case 'ping':
+        const start = Date.now();
+        await interaction.deferReply();
+        const latency = Date.now() - start;
+        await interaction.editReply({
+          content: `🏓 Pong! Latency: ${latency}ms`
+        });
+        break;
+
+      case 'system':
+        await handlers.system.execute(interaction);
+        break;
+
+      case 'notification':
+        await handlers.notification.execute(interaction);
+        break;
+
+      default:
+        await interaction.editReply({
+          content: '❌ Unknown subcommand'
+        });
     }
+  }
 };
+
+// Export command
+export { test as command };

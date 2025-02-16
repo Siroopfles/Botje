@@ -1,10 +1,7 @@
-import { NotificationsHandler } from './notificationsHandler.js';
-import { SettingsHandlers } from '../types.js';
+import { handler as serverSettingsHandler } from './serverSettingsHandler.js';
 
-const handlers: SettingsHandlers = {
-    notifications: new NotificationsHandler()
-    // Add more settings handlers here as needed
+export const handlers = {
+  server: serverSettingsHandler
 };
 
-// Export as a single object to ensure handlers are initialized only once
-export { handlers };
+export type { NotificationSettings, ServerSettings } from '../../../types.js';

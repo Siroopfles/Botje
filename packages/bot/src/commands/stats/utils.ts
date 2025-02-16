@@ -1,41 +1,86 @@
 import { EmbedBuilder } from 'discord.js';
-import { PermissionService } from 'shared';
-import { MetricsResult } from './types.js';
+import { TaskMetrics, UserMetrics, PermissionMetrics } from './types.js';
 
-export function createMetricsEmbed(stats: ReturnType<typeof PermissionService.getStats>) {
-    const { metrics, cache } = stats;
-
-    // Format cache stats
-    const cacheStats = `**Cache Stats:**
-• Role Entries: ${cache.roleEntries}
-• Permission Entries: ${cache.permissionEntries}`;
-
-    // Format metrics
-    const metricStats = `**Permission Metrics (Last 5 Minutes):**
-• Total Checks: ${metrics.totalChecks}
-• Cache Hit Rate: ${(metrics.cacheHitRate * 100).toFixed(1)}%
-• Average Check Duration: ${metrics.averageCheckDuration.toFixed(2)}ms
-• Checks Per Minute: ${metrics.checksPerMinute.toFixed(1)}
-• Grant Rate: ${(metrics.grantRate * 100).toFixed(1)}%`;
-
-    // Format permission distribution
-    const permissionDist = Object.entries(metrics.permissionDistribution)
-        .sort(([, a], [, b]) => b - a) // Sort by frequency
-        .slice(0, 5) // Top 5 most checked permissions
-        .map(([perm, count]) => `• ${perm}: ${count} checks`)
-        .join('\n');
-
-    const permissionStats = `**Top 5 Checked Permissions:**
-${permissionDist}`;
-
-    return new EmbedBuilder()
-        .setTitle('📊 Permission System Statistics')
-        .setDescription(`${cacheStats}\n\n${metricStats}\n\n${permissionStats}`)
-        .setColor(0x00ff00)
-        .setFooter({ text: 'Stats are from the last 5 minutes of activity' })
-        .setTimestamp();
+/**
+ * Format a number with thousands separators
+ */
+export function formatNumber(num: number): string {
+  return new Intl.NumberFormat().format(num);
 }
 
-export function formatError(error: Error): string {
-    return `❌ Error retrieving stats: ${error.message}`;
+/**
+ * Format a percentage value with fixed decimals
+ */
+export function formatPercentage(value: number, decimals: number = 1): string {
+  return `${value.toFixed(decimals)}%`;
+}
+
+/**
+ * Format an error message for display
+ */
+export function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'An unknown error occurred';
+}
+
+/**
+ * Create a generic metrics embed
+ */
+export function createMetricsEmbed(title: string, metrics: Record<string, string | number>): EmbedBuilder {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setColor('#0099ff')
+    .addFields(
+      Object.entries(metrics).map(([name, value]) => ({
+        name,
+        value: value.toString(),
+        inline: true
+      }))
+    )
+    .setTimestamp();
+}
+
+/**
+ * Create an embed for task metrics
+ */
+export function createTaskMetricsEmbed(metrics: TaskMetrics, period: string): EmbedBuilder {
+  return createMetricsEmbed(`📊 Task Statistics (${period})`, {
+    'Total Tasks': formatNumber(metrics.totalTasks),
+    'Completed Tasks': formatNumber(metrics.completedTasks),
+    'Average Completion Time': `${metrics.averageCompletionTime.toFixed(1)} days`,
+    'Tasks by Status': Object.entries(metrics.tasksByStatus)
+      .map(([status, count]) => `${status}: ${formatNumber(count)}`)
+      .join('\n')
+  });
+}
+
+/**
+ * Create an embed for user metrics
+ */
+export function createUserMetricsEmbed(metrics: UserMetrics, userName: string): EmbedBuilder {
+  return createMetricsEmbed(`📊 Statistics for ${userName}`, {
+    'Tasks Created': formatNumber(metrics.tasksCreated),
+    'Tasks Completed': formatNumber(metrics.tasksCompleted),
+    'Tasks Assigned': formatNumber(metrics.tasksAssigned),
+    'Completion Rate': formatPercentage(metrics.completionRate),
+    'Average Task Time': `${metrics.averageTaskTime.toFixed(1)} days`,
+    'Last Active': metrics.lastActive.toLocaleString()
+  });
+}
+
+/**
+ * Create an embed for permission metrics
+ */
+export function createPermissionMetricsEmbed(metrics: PermissionMetrics): EmbedBuilder {
+  return createMetricsEmbed('📊 Permission Statistics', {
+    'Total Users': formatNumber(metrics.userCount),
+    'Task Managers': formatNumber(metrics.managerCount),
+    'Task Viewers': formatNumber(metrics.viewerCount),
+    'Average Permissions': formatNumber(metrics.averagePermissions),
+    'Permission Distribution': Object.entries(metrics.permissionDistribution)
+      .map(([perm, count]) => `${perm}: ${formatPercentage(count)}`)
+      .join('\n')
+  });
 }
