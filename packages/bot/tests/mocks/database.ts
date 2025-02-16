@@ -2,10 +2,12 @@ import { jest } from '@jest/globals';
 import type { 
   TaskRepository, 
   ServerSettingsRepository,
+  RoleRepository,
   TaskDocument,
-  ServerSettingsDocument
+  ServerSettingsDocument,
+  RoleDocument
 } from 'database';
-import { TaskStatus } from 'shared';
+import { TaskStatus, Permission, Role } from 'shared';
 
 // Mock document shapes (without mongoose methods)
 interface MockTask {
@@ -57,6 +59,16 @@ export const mockServerSettingsRepo: jest.Mocked<ServerSettingsRepository> = {
   getNotificationSettings: jest.fn()
 };
 
+export const mockRoleRepo: jest.Mocked<RoleRepository> = {
+  create: jest.fn(),
+  findById: jest.fn(),
+  findByServerId: jest.fn(),
+  findByDiscordId: jest.fn(),
+  findByName: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn()
+};
+
 // Default mock values
 const defaultNotificationSettings: MockNotificationSettings = {
   taskCreated: true,
@@ -104,21 +116,40 @@ mockServerSettingsRepo.findByServerId.mockImplementation(async () => createMockS
 mockServerSettingsRepo.update.mockImplementation(async (id, data) => createMockSettings(data) as unknown as ServerSettingsDocument);
 mockServerSettingsRepo.create.mockImplementation(async (data) => createMockSettings(data) as unknown as ServerSettingsDocument);
 mockServerSettingsRepo.delete.mockImplementation(async () => true);
-mockServerSettingsRepo.getNotificationSettings.mockImplementation(async () => {
-  // Need to use any here to bypass the type check since we don't have access to the actual ServerNotificationSettings type
-  return defaultNotificationSettings as any;
-});
+mockServerSettingsRepo.getNotificationSettings.mockImplementation(async () => defaultNotificationSettings as any);
+
+const createMockRoleDocument = (data?: Partial<Role>): RoleDocument => ({
+  id: 'role-123',
+  name: 'Test Role',
+  serverId: 'server-123',
+  permissions: [Permission.CREATE_TASK],
+  assignableBy: [Permission.MANAGE_ROLES],
+  discordRoleId: 'discord-role-123',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...data
+}) as RoleDocument;
+
+mockRoleRepo.create.mockImplementation(async (data) => createMockRoleDocument(data));
+mockRoleRepo.findById.mockImplementation(async () => createMockRoleDocument());
+mockRoleRepo.findByServerId.mockImplementation(async () => [createMockRoleDocument()]);
+mockRoleRepo.findByDiscordId.mockImplementation(async () => createMockRoleDocument());
+mockRoleRepo.findByName.mockImplementation(async () => createMockRoleDocument());
+mockRoleRepo.update.mockImplementation(async (id, data) => createMockRoleDocument(data));
+mockRoleRepo.delete.mockImplementation(async () => true);
 
 // Reset helper
 export const resetMocks = () => {
   Object.values(mockTaskRepo).forEach(mock => mock.mockClear());
   Object.values(mockServerSettingsRepo).forEach(mock => mock.mockClear());
+  Object.values(mockRoleRepo).forEach(mock => mock.mockClear());
 };
 
 // Mock the database module
 jest.mock('database', () => ({
   createTaskRepository: () => mockTaskRepo,
-  createServerSettingsRepository: () => mockServerSettingsRepo
+  createServerSettingsRepository: () => mockServerSettingsRepo,
+  createRoleRepository: () => mockRoleRepo
 }));
 
 // Export mock types for use in tests
